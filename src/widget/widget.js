@@ -147,28 +147,52 @@ widget.addEventListener('dblclick', () => {
 });
 
 let dragging = false;
-let dragOrigin = null;
+let dragOffset = null;
+let pendingPos = null;
+let rafHandle = 0;
 
-widget.addEventListener('pointerdown', (e) => {
+function flushMove() {
+  rafHandle = 0;
+  if (!dragging || !pendingPos) return;
+  const { x, y } = pendingPos;
+  pendingPos = null;
+  window.claudeState.setWidgetPosition(x, y);
+}
+
+widget.addEventListener('pointerdown', async (e) => {
   if (e.button !== 0) return;
+  const origin = await window.claudeState.widgetDragStart();
+  if (!origin) return;
   dragging = true;
-  dragOrigin = { x: e.screenX, y: e.screenY };
+  dragOffset = {
+    x: e.screenX - origin.x,
+    y: e.screenY - origin.y
+  };
   try { widget.setPointerCapture(e.pointerId); } catch {}
 });
 
 widget.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  const dx = e.screenX - dragOrigin.x;
-  const dy = e.screenY - dragOrigin.y;
-  if (dx === 0 && dy === 0) return;
-  dragOrigin = { x: e.screenX, y: e.screenY };
-  window.claudeState.moveWidget(dx, dy);
+  if (!dragging || !dragOffset) return;
+  pendingPos = {
+    x: e.screenX - dragOffset.x,
+    y: e.screenY - dragOffset.y
+  };
+  if (!rafHandle) rafHandle = requestAnimationFrame(flushMove);
 });
 
 const endDrag = (e) => {
   if (!dragging) return;
+  if (rafHandle) {
+    cancelAnimationFrame(rafHandle);
+    rafHandle = 0;
+  }
+  if (pendingPos) {
+    const { x, y } = pendingPos;
+    pendingPos = null;
+    window.claudeState.setWidgetPosition(x, y);
+  }
   dragging = false;
-  dragOrigin = null;
+  dragOffset = null;
   try { widget.releasePointerCapture(e.pointerId); } catch {}
 };
 widget.addEventListener('pointerup', endDrag);

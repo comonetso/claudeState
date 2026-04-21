@@ -421,3 +421,14 @@ ipcMain.handle('widget:move', (_event, dx, dy) => {
   const [x, y] = widgetWindow.getPosition();
   widgetWindow.setPosition(Math.round(x + dx), Math.round(y + dy), false);
 });
+
+ipcMain.handle('widget:drag-start', () => {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return null;
+  const [x, y] = widgetWindow.getPosition();
+  return { x, y };
+});
+
+ipcMain.handle('widget:set-position', (_event, x, y) => {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  widgetWindow.setPosition(Math.round(x), Math.round(y), false);
+});
