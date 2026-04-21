@@ -37,8 +37,7 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        { "target": "nsis", "arch": ["x64"] }
       ],
       "icon": "build/icon.png",
       "artifactName": "${productName}-${version}-${arch}-${ext}.${ext}"
@@ -49,10 +48,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "claudeState"
-    },
-    "portable": {
-      "artifactName": "claudeState-${version}-portable.exe"
+      "shortcutName": "claudeState",
+      "menuCategory": "claudeState",
+      "include": "build/installer.nsh"
     }
   }
 }

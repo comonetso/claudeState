@@ -5,4 +5,5 @@ out/
 .DS_Store
 .file_history/
 .claude/
-build/
+build/*
+!build/installer.nsh

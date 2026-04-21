@@ -1,6 +1,7 @@
 const orgIdInput = document.getElementById('orgId');
 const cookieInput = document.getElementById('sessionCookie');
 const intervalInput = document.getElementById('refreshInterval');
+const autoLaunchInput = document.getElementById('autoLaunch');
 const statusEl = document.getElementById('status');
 const saveBtn = document.getElementById('save-btn');
 const testBtn = document.getElementById('test-btn');
@@ -9,6 +10,7 @@ async function load() {
   const s = await window.claudeState.getSettings();
   orgIdInput.value = s.orgId ?? '';
   intervalInput.value = s.refreshIntervalSec ?? 300;
+  autoLaunchInput.checked = s.autoLaunch !== false;
   if (s.hasCookie) {
     cookieInput.placeholder = '(저장된 쿠키 있음 — 비우면 유지, 덮어쓰려면 새 값 입력)';
   }
@@ -44,7 +46,8 @@ saveBtn.addEventListener('click', async () => {
     await window.claudeState.saveSettings({
       sessionCookie: cookie || undefined,
       orgId,
-      refreshIntervalSec: intervalSec
+      refreshIntervalSec: intervalSec,
+      autoLaunch: autoLaunchInput.checked
     });
     setStatus('저장 완료. 새로고침 중...', 'ok');
   } catch (e) {

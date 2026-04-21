@@ -41,6 +41,17 @@ function setRefreshIntervalSec(sec) {
   writeJSON(STATE_FILE(), state);
 }
 
+function getAutoLaunch() {
+  const v = readJSON(STATE_FILE())?.autoLaunch;
+  return typeof v === 'boolean' ? v : true;
+}
+
+function setAutoLaunch(enabled) {
+  const state = readJSON(STATE_FILE()) ?? {};
+  state.autoLaunch = Boolean(enabled);
+  writeJSON(STATE_FILE(), state);
+}
+
 function getCredentials() {
   try {
     const file = CREDS_FILE();
@@ -70,5 +81,7 @@ module.exports = {
   getCredentials,
   setCredentials,
   getRefreshIntervalSec,
-  setRefreshIntervalSec
+  setRefreshIntervalSec,
+  getAutoLaunch,
+  setAutoLaunch
 };

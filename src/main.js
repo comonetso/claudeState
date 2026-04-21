@@ -1,9 +1,46 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, screen, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Notification, ipcMain, Menu, Tray, screen, nativeImage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 const storage = require('./storage');
 const api = require('./api');
+
+app.setAppUserModelId('com.comonetso.claudestate');
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return;
+}
+
+app.on('second-instance', () => {
+  try {
+    new Notification({
+      title: 'claudeState',
+      body: '이미 실행 중입니다. 트레이 아이콘을 확인하세요.',
+      silent: false
+    }).show();
+  } catch (e) {
+    console.warn(`[claudeState] 토스트 실패: ${e.message}`);
+  }
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    if (widgetWindow.isMinimized()) widgetWindow.restore();
+    widgetWindow.show();
+    widgetWindow.focus();
+  }
+});
+
+function syncAutoLaunch() {
+  const enabled = storage.getAutoLaunch();
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: process.execPath,
+      args: []
+    });
+  } catch (e) {
+    console.warn(`[claudeState] 자동 실행 설정 실패: ${e.message}`);
+  }
+}
 
 let logStream = null;
 let logFilePath = null;
@@ -262,6 +299,7 @@ function startFetchLoop() {
 
 app.whenReady().then(() => {
   installLogTee();
+  syncAutoLaunch();
   createWidgetWindow();
   createTray();
   startFetchLoop();
@@ -283,7 +321,8 @@ ipcMain.handle('settings:get', () => {
   return {
     hasCookie: Boolean(creds?.sessionCookie),
     orgId: creds?.orgId ?? '',
-    refreshIntervalSec: storage.getRefreshIntervalSec()
+    refreshIntervalSec: storage.getRefreshIntervalSec(),
+    autoLaunch: storage.getAutoLaunch()
   };
 });
 
@@ -300,6 +339,11 @@ ipcMain.handle('settings:save', async (_event, payload) => {
     startFetchLoop();
   } else {
     refreshUsage();
+  }
+
+  if (typeof payload.autoLaunch === 'boolean') {
+    storage.setAutoLaunch(payload.autoLaunch);
+    syncAutoLaunch();
   }
   return { ok: true };
 });
