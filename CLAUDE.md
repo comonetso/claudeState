@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Pending rename (read this first)
+## Rename note
 
-The project name `cloudState` / `cloud-state` is a typo — it should be `claudeState` / `claude-state` (the app displays **Claude** usage). A rename across `package.json`, `src/main.js` log tags, HTML titles, `appId`, and build artifact names is outstanding. See [SESSION_LOG.md](SESSION_LOG.md) for the full checklist. Renaming `productName` changes the Electron `userData` folder (`%APPDATA%\cloudState` → `%APPDATA%\claudeState`), so `creds.enc` and `state.json` must be re-entered via the settings window after the rename.
+The project was renamed from `cloudState` → `claudeState` on 2026-04-21 (the app displays **Claude** usage; `cloud` was a typo). The `productName` change moves Electron's `userData` folder to `%APPDATA%\claudeState`, so `creds.enc` and `state.json` must be re-entered via the settings window after upgrading from a pre-rename build. See [SESSION_LOG.md](SESSION_LOG.md) for the full history.
 
 ## Commands
 
@@ -34,7 +34,7 @@ The same pattern is used by `scripts/make-icon.js` → `scripts/make-icon.entry.
 ### Process layout
 
 - **Main** (`src/main.js`) — single file that orchestrates everything: log tee, widget window, settings window, tray, IPC handlers, and the fetch timer.
-- **Preload** (`src/preload.js`) — exposes a `window.cloudState` API via `contextBridge`: `getSettings`, `saveSettings`, `refreshUsage`, `openSettings`, `quit`, `onUsageUpdate`. Both renderer windows share the same preload.
+- **Preload** (`src/preload.js`) — exposes a `window.claudeState` API via `contextBridge`: `getSettings`, `saveSettings`, `refreshUsage`, `openSettings`, `quit`, `onUsageUpdate`. Both renderer windows share the same preload.
 - **Renderers** — two HTML pages under `src/widget/` and `src/settings/`. Context isolation is on, node integration is off.
 
 ### Data flow (one refresh cycle)
@@ -53,7 +53,7 @@ The same pattern is used by `scripts/make-icon.js` → `scripts/make-icon.entry.
 ### Storage split
 
 `src/storage.js` uses two different mechanisms based on sensitivity:
-- **Credentials** (`sessionCookie`, `orgId`) → `safeStorage.encryptString` (DPAPI on Windows) → `%APPDATA%\cloudState\creds.enc`. Falls back to plain JSON if `safeStorage.isEncryptionAvailable()` is false.
+- **Credentials** (`sessionCookie`, `orgId`) → `safeStorage.encryptString` (DPAPI on Windows) → `%APPDATA%\claudeState\creds.enc`. Falls back to plain JSON if `safeStorage.isEncryptionAvailable()` is false.
 - **Non-sensitive state** (`windowPosition`, `refreshIntervalSec`) → plain JSON in `state.json`.
 
 ### Widget window position (multi-monitor aware)
@@ -66,7 +66,7 @@ The same pattern is used by `scripts/make-icon.js` → `scripts/make-icon.entry.
 
 ## Logging
 
-Console output is tee'd to `%APPDATA%\cloudState\cloudstate.log` (UTF-8) by `installLogTee()` in `main.js`. The log is deliberately terse: successful refreshes produce one summary line (`갱신: 세션 X% / 주간 Y%`), and only errors/warnings emit additional output. Do not add verbose debug logs back in without a reason — previous versions dumped raw JSON on every refresh and the user asked for it removed.
+Console output is tee'd to `%APPDATA%\claudeState\claudestate.log` (UTF-8) by `installLogTee()` in `main.js`. The log is deliberately terse: successful refreshes produce one summary line (`갱신: 세션 X% / 주간 Y%`), and only errors/warnings emit additional output. Do not add verbose debug logs back in without a reason — previous versions dumped raw JSON on every refresh and the user asked for it removed.
 
 The tray "로그 보기" menu writes a one-shot batch file (`view-log.cmd`) to `userData` and launches it. The batch file uses `chcp 65001` and PowerShell `Get-Content -Wait -Encoding UTF8` to correctly render Korean. Inlining the PowerShell command into `cmd /c` does not work — Windows re-encodes the arguments and the Korean corrupts before reaching PowerShell.
 

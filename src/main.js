@@ -9,7 +9,7 @@ let logStream = null;
 let logFilePath = null;
 
 function installLogTee() {
-  logFilePath = path.join(app.getPath('userData'), 'cloudstate.log');
+  logFilePath = path.join(app.getPath('userData'), 'claudestate.log');
   fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
   logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
 
@@ -28,7 +28,7 @@ function installLogTee() {
   console.warn = wrap(origWarn, 'WARN');
   console.error = wrap(origErr, 'ERR ');
 
-  console.log(`[cloudState] 로그 파일: ${logFilePath}`);
+  console.log(`[claudeState] 로그 파일: ${logFilePath}`);
 }
 
 function openLogViewer() {
@@ -38,17 +38,17 @@ function openLogViewer() {
   const batContent = [
     '@echo off',
     'chcp 65001 >nul',
-    'title cloudState log',
+    'title claudeState log',
     `powershell -NoLogo -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -LiteralPath '${escapedPath}' -Wait -Tail 200 -Encoding UTF8"`
   ].join('\r\n') + '\r\n';
   try {
     fs.writeFileSync(batPath, batContent, { encoding: 'utf8' });
   } catch (e) {
-    console.error('[cloudState] 로그 뷰어 스크립트 생성 실패:', e.message);
+    console.error('[claudeState] 로그 뷰어 스크립트 생성 실패:', e.message);
     return;
   }
   exec(`start "" "${batPath}"`, { windowsHide: false }, (err) => {
-    if (err) console.error('[cloudState] 로그 뷰어 실행 실패:', err.message);
+    if (err) console.error('[claudeState] 로그 뷰어 실행 실패:', err.message);
   });
 }
 
@@ -78,7 +78,7 @@ function createWidgetWindow() {
   const workArea = display.workArea;
 
   const saved = storage.getWindowPosition();
-  const W = 200, H = 40;
+  const W = 250, H = 40;
   const defaultX = workArea.x + workArea.width - W - 5;
   const defaultY = workArea.y + workArea.height - H - 2;
 
@@ -95,11 +95,11 @@ function createWidgetWindow() {
     x = saved.x;
     y = saved.y;
   } else if (saved) {
-    console.warn(`[cloudState] 저장된 위치 (${saved.x}, ${saved.y})가 화면 밖 — 기본 위치로 복원`);
+    console.warn(`[claudeState] 저장된 위치 (${saved.x}, ${saved.y})가 화면 밖 — 기본 위치로 복원`);
   }
 
   widgetWindow = new BrowserWindow({
-    width: 200,
+    width: 250,
     height: 40,
     x,
     y,
@@ -123,7 +123,7 @@ function createWidgetWindow() {
   const persistPosition = () => {
     if (!widgetWindow || widgetWindow.isDestroyed()) return;
     const [wx, wy] = widgetWindow.getPosition();
-    const W = 200, H = 40;
+    const W = 250, H = 40;
     const all = screen.getAllDisplays();
     const inAny = all.some((d) => {
       const a = d.workArea;
@@ -159,7 +159,7 @@ function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 480,
     height: 380,
-    title: 'cloudState 설정',
+    title: 'claudeState 설정',
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -190,11 +190,11 @@ function createTray() {
       }
     }
   } else {
-    console.warn('[cloudState] 트레이 아이콘 파일 없음 — 빈 아이콘 사용');
+    console.warn('[claudeState] 트레이 아이콘 파일 없음 — 빈 아이콘 사용');
     icon = nativeImage.createEmpty();
   }
   tray = new Tray(icon);
-  tray.setToolTip('cloudState');
+  tray.setToolTip('claudeState');
 
   const menu = Menu.buildFromTemplate([
     { label: '설정', click: () => createSettingsWindow() },
@@ -213,7 +213,7 @@ function resetWidgetPosition() {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;
   const display = screen.getPrimaryDisplay();
   const a = display.workArea;
-  const x = a.x + a.width - 205;
+  const x = a.x + a.width - 255;
   const y = a.y + a.height - 42;
   widgetWindow.setPosition(x, y, false);
   storage.setWindowPosition({ x, y });
@@ -231,14 +231,14 @@ async function refreshUsage() {
   try {
     const data = await api.fetchUsage(creds.sessionCookie, creds.orgId);
     const n = data.normalized;
-    console.log(`[cloudState] 갱신: 세션 ${n.sessionPercent ?? '?'}% / 주간 ${n.weeklyPercent ?? '?'}%`);
+    console.log(`[claudeState] 갱신: 세션 ${n.sessionPercent ?? '?'}% / 주간 ${n.weeklyPercent ?? '?'}%`);
     broadcast('usage:update', { status: 'ok', data });
   } catch (err) {
     if (err.code === 'AUTH_EXPIRED') {
-      console.error(`[cloudState] 쿠키 만료 감지: ${err.message}`);
+      console.error(`[claudeState] 쿠키 만료 감지: ${err.message}`);
       broadcast('usage:update', { status: 'auth_expired', message: err.message });
     } else {
-      console.error(`[cloudState] API 실패: ${err.message}`);
+      console.error(`[claudeState] API 실패: ${err.message}`);
       broadcast('usage:update', { status: 'error', message: err.message });
     }
   }
@@ -255,7 +255,7 @@ function broadcast(channel, payload) {
 function startFetchLoop() {
   if (fetchTimer) clearInterval(fetchTimer);
   const sec = storage.getRefreshIntervalSec();
-  console.log(`[cloudState] 새로고침 간격: ${sec}초`);
+  console.log(`[claudeState] 새로고침 간격: ${sec}초`);
   refreshUsage();
   fetchTimer = setInterval(refreshUsage, sec * 1000);
 }

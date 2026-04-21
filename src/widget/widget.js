@@ -40,7 +40,15 @@ function resetAtLabel(iso) {
   const timePart = `${ap} ${h12}:${mm}`;
   if (sameDay) return timePart;
   const days = ['일', '월', '화', '수', '목', '금', '토'];
-  return `${days[d.getDay()]} ${timePart}`;
+  return `${timePart} (${days[d.getDay()]})`;
+}
+
+function sessionWhenLabel(iso) {
+  const base = resetAtLabel(iso);
+  if (base === '--') return '--';
+  const until = untilHuman(iso);
+  if (until === '--') return base;
+  return `${base} (${until})`;
 }
 
 function untilHuman(iso) {
@@ -104,7 +112,7 @@ function render(payload) {
     const n = payload.data.normalized;
     setBar(sessionBar, sessionText, n.sessionPercent);
     setBar(weeklyBar, weeklyText, n.weeklyPercent);
-    sessionWhen.textContent = resetAtLabel(n.sessionResetAt);
+    sessionWhen.textContent = sessionWhenLabel(n.sessionResetAt);
     weeklyWhen.textContent = resetAtLabel(n.weeklyResetAt);
 
     const tooltip = [
@@ -120,20 +128,20 @@ function render(payload) {
 function tickRecompute() {
   if (lastPayload?.status === 'ok' && lastPayload.data) {
     const n = lastPayload.data.normalized;
-    sessionWhen.textContent = resetAtLabel(n.sessionResetAt);
+    sessionWhen.textContent = sessionWhenLabel(n.sessionResetAt);
     weeklyWhen.textContent = resetAtLabel(n.weeklyResetAt);
   }
 }
 
 setInterval(tickRecompute, 60 * 1000);
 
-window.cloudState.onUsageUpdate(render);
+window.claudeState.onUsageUpdate(render);
 
 widget.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  window.cloudState.openSettings();
+  window.claudeState.openSettings();
 });
 
 widget.addEventListener('dblclick', () => {
-  window.cloudState.refreshUsage();
+  window.claudeState.refreshUsage();
 });

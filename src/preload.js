@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('cloudState', {
+contextBridge.exposeInMainWorld('claudeState', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (payload) => ipcRenderer.invoke('settings:save', payload),
   refreshUsage: () => ipcRenderer.invoke('usage:refresh'),

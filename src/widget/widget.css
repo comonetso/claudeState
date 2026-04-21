@@ -1,7 +1,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
-  width: 200px;
+  width: 250px;
   height: 40px;
   background: transparent;
   overflow: hidden;
@@ -12,7 +12,7 @@ html, body {
 }
 
 .widget {
-  width: 200px;
+  width: 250px;
   height: 40px;
   background: rgba(20, 20, 24, 0.85);
   border-radius: 6px;

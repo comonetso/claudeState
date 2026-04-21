@@ -1,6 +1,6 @@
 {
-  "name": "cloud-state",
-  "productName": "cloudState",
+  "name": "claude-state",
+  "productName": "claudeState",
   "version": "0.1.0",
   "description": "Claude 사용량을 작업표시줄에 표시하는 위젯",
   "main": "src/main.js",
@@ -19,8 +19,8 @@
     "electron-builder": "^26.8.1"
   },
   "build": {
-    "appId": "com.comonetso.cloudstate",
-    "productName": "cloudState",
+    "appId": "com.comonetso.claudestate",
+    "productName": "claudeState",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -49,10 +49,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "cloudState"
+      "shortcutName": "claudeState"
     },
     "portable": {
-      "artifactName": "cloudState-${version}-portable.exe"
+      "artifactName": "claudeState-${version}-portable.exe"
     }
   }
 }

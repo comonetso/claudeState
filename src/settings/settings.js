@@ -6,7 +6,7 @@ const saveBtn = document.getElementById('save-btn');
 const testBtn = document.getElementById('test-btn');
 
 async function load() {
-  const s = await window.cloudState.getSettings();
+  const s = await window.claudeState.getSettings();
   orgIdInput.value = s.orgId ?? '';
   intervalInput.value = s.refreshIntervalSec ?? 300;
   if (s.hasCookie) {
@@ -29,7 +29,7 @@ saveBtn.addEventListener('click', async () => {
     return;
   }
 
-  const existing = await window.cloudState.getSettings();
+  const existing = await window.claudeState.getSettings();
   if (!cookie && !existing.hasCookie) {
     setStatus('Session Cookie가 필요합니다', 'err');
     return;
@@ -41,7 +41,7 @@ saveBtn.addEventListener('click', async () => {
   }
 
   try {
-    await window.cloudState.saveSettings({
+    await window.claudeState.saveSettings({
       sessionCookie: cookie || undefined,
       orgId,
       refreshIntervalSec: intervalSec
@@ -53,11 +53,11 @@ saveBtn.addEventListener('click', async () => {
 });
 
 testBtn.addEventListener('click', () => {
-  window.cloudState.refreshUsage();
+  window.claudeState.refreshUsage();
   setStatus('새로고침 요청됨', 'ok');
 });
 
-window.cloudState.onUsageUpdate((payload) => {
+window.claudeState.onUsageUpdate((payload) => {
   if (payload.status === 'ok') {
     setStatus(`✓ 성공 (출처: ${payload.data.source})`, 'ok');
   } else if (payload.status === 'auth_expired') {
