@@ -135,6 +135,8 @@ function createWidgetWindow() {
     console.warn(`[claudeState] 저장된 위치 (${saved.x}, ${saved.y})가 화면 밖 — 기본 위치로 복원`);
   }
 
+  const startHidden = storage.getWidgetVisible() === false;
+
   widgetWindow = new BrowserWindow({
     width: 250,
     height: 40,
@@ -146,6 +148,7 @@ function createWidgetWindow() {
     skipTaskbar: true,
     resizable: false,
     hasShadow: false,
+    show: !startHidden,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -232,18 +235,58 @@ function createTray() {
   }
   tray = new Tray(icon);
   tray.setToolTip('claudeState');
+  rebuildTrayMenu();
+}
 
+function rebuildTrayMenu() {
+  if (!tray) return;
+  const visible = storage.getWidgetVisible();
   const menu = Menu.buildFromTemplate([
+    {
+      label: '위젯 표시',
+      type: 'checkbox',
+      checked: visible,
+      click: () => (visible ? hideWidget() : showWidget())
+    },
     { label: '설정', click: () => createSettingsWindow() },
     { label: '지금 새로고침', click: () => refreshUsage() },
     { type: 'separator' },
-    { label: '위치 초기화 (우하단으로)', click: () => resetWidgetPosition() },
+    { label: '위치 초기화 (우하단으로)', enabled: visible, click: () => resetWidgetPosition() },
     { label: '로그 보기', click: () => openLogViewer() },
     { label: '로그 폴더 열기', click: () => { if (logFilePath) shell.showItemInFolder(logFilePath); } },
     { type: 'separator' },
     { label: '종료', click: () => app.quit() }
   ]);
   tray.setContextMenu(menu);
+}
+
+function showWidget() {
+  storage.setWidgetVisible(true);
+  if (!widgetWindow || widgetWindow.isDestroyed()) {
+    createWidgetWindow();
+  } else {
+    widgetWindow.show();
+  }
+  rebuildTrayMenu();
+}
+
+function hideWidget() {
+  storage.setWidgetVisible(false);
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.hide();
+  }
+  rebuildTrayMenu();
+}
+
+function showWidgetContextMenu() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  const menu = Menu.buildFromTemplate([
+    { label: '지금 새로고침', click: () => refreshUsage() },
+    { label: '설정', click: () => createSettingsWindow() },
+    { type: 'separator' },
+    { label: '숨기기', click: () => hideWidget() }
+  ]);
+  menu.popup({ window: widgetWindow });
 }
 
 function resetWidgetPosition() {
@@ -358,4 +401,12 @@ ipcMain.handle('window:open-settings', () => {
 
 ipcMain.handle('app:quit', () => {
   app.quit();
+});
+
+ipcMain.handle('widget:hide', () => {
+  hideWidget();
+});
+
+ipcMain.handle('widget:context-menu', () => {
+  showWidgetContextMenu();
 });

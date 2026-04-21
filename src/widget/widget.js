@@ -139,7 +139,7 @@ window.claudeState.onUsageUpdate(render);
 
 widget.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  window.claudeState.openSettings();
+  window.claudeState.showWidgetContextMenu();
 });
 
 widget.addEventListener('dblclick', () => {

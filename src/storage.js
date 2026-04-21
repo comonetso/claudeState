@@ -52,6 +52,17 @@ function setAutoLaunch(enabled) {
   writeJSON(STATE_FILE(), state);
 }
 
+function getWidgetVisible() {
+  const v = readJSON(STATE_FILE())?.widgetVisible;
+  return typeof v === 'boolean' ? v : true;
+}
+
+function setWidgetVisible(visible) {
+  const state = readJSON(STATE_FILE()) ?? {};
+  state.widgetVisible = Boolean(visible);
+  writeJSON(STATE_FILE(), state);
+}
+
 function getCredentials() {
   try {
     const file = CREDS_FILE();
@@ -83,5 +94,7 @@ module.exports = {
   getRefreshIntervalSec,
   setRefreshIntervalSec,
   getAutoLaunch,
-  setAutoLaunch
+  setAutoLaunch,
+  getWidgetVisible,
+  setWidgetVisible
 };
