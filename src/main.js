@@ -159,6 +159,11 @@ function createWidgetWindow() {
   widgetWindow.setAlwaysOnTop(true, 'screen-saver');
   widgetWindow.loadFile(path.join(__dirname, 'widget', 'index.html'));
 
+  widgetWindow.webContents.on('context-menu', (e) => {
+    e.preventDefault();
+    showWidgetContextMenu();
+  });
+
   let savePosTimer = null;
   const persistPosition = () => {
     if (!widgetWindow || widgetWindow.isDestroyed()) return;
