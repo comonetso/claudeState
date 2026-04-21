@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>cloudState 설정</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="container">
+    <h1>cloudState 설정</h1>
+
+    <div class="field">
+      <label for="orgId">Organization ID</label>
+      <input type="text" id="orgId" placeholder="예: da39b20c-1aee-4add-bbc6-7d876b5492fb" />
+      <p class="hint">claude.ai 네트워크 탭에서 <code>/api/organizations/{UUID}/...</code> 에 보이는 UUID</p>
+    </div>
+
+    <div class="field">
+      <label for="sessionCookie">Session Cookie (sessionKey)</label>
+      <textarea id="sessionCookie" rows="3" placeholder="sk-ant-sid02-..."></textarea>
+      <p class="hint">claude.ai 개발자도구 → Application → Cookies → <code>sessionKey</code> 값</p>
+    </div>
+
+    <div class="field">
+      <label for="refreshInterval">새로고침 간격 (초)</label>
+      <input type="number" id="refreshInterval" min="10" max="3600" step="10" value="300" />
+      <p class="hint">범위: 10 ~ 3600초 / 기본: 300초 (5분)</p>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div class="actions">
+      <button id="test-btn" class="secondary">지금 새로고침</button>
+      <button id="save-btn" class="primary">저장</button>
+    </div>
+
+    <p class="note">
+      쿠키는 OS 자격증명 저장소(safeStorage)로 암호화되어 저장됩니다.
+    </p>
+  </div>
+  <script src="settings.js"></script>
+</body>
+</html>

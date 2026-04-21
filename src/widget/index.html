@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>cloudState</title>
+  <link rel="stylesheet" href="widget.css">
+</head>
+<body>
+  <div id="widget" class="widget" title="cloudState">
+    <div class="row">
+      <span class="label">S</span>
+      <div class="bar"><div id="session-bar" class="bar-fill session"></div></div>
+      <span id="session-text" class="pct">--</span>
+      <span id="session-when" class="when">--</span>
+    </div>
+    <div class="row">
+      <span class="label">W</span>
+      <div class="bar"><div id="weekly-bar" class="bar-fill weekly"></div></div>
+      <span id="weekly-text" class="pct">--</span>
+      <span id="weekly-when" class="when">--</span>
+    </div>
+    <div id="status" class="status"></div>
+  </div>
+  <script src="widget.js"></script>
+</body>
+</html>

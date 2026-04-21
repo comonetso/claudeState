@@ -1,0 +1,58 @@
+{
+  "name": "cloud-state",
+  "productName": "cloudState",
+  "version": "0.1.0",
+  "description": "Claude 사용량을 작업표시줄에 표시하는 위젯",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node scripts/run.js",
+    "dev": "node scripts/run.js --dev",
+    "make-icon": "node scripts/make-icon.js",
+    "dist": "npm run make-icon && electron-builder --win",
+    "pack": "npm run make-icon && electron-builder --win --dir"
+  },
+  "author": "comonetso",
+  "license": "MIT",
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.comonetso.cloudstate",
+    "productName": "cloudState",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "scripts/run.js",
+      "icon.jpg",
+      "assets/**/*",
+      "!**/*.map"
+    ],
+    "extraMetadata": {
+      "main": "src/main.js"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-${arch}-${ext}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "cloudState"
+    },
+    "portable": {
+      "artifactName": "cloudState-${version}-portable.exe"
+    }
+  }
+}
