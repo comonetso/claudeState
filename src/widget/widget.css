@@ -21,7 +21,7 @@ html, body {
   flex-direction: column;
   justify-content: center;
   gap: 2px;
-  -webkit-app-region: drag;
+  cursor: move;
   border: 1px solid rgba(255, 255, 255, 0.08);
   position: relative;
 }
@@ -128,7 +128,6 @@ html, body {
   right: 4px;
   font-size: 8px;
   color: #fbbf24;
-  -webkit-app-region: no-drag;
 }
 
 .status.error { color: #ef4444; }

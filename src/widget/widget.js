@@ -145,3 +145,31 @@ widget.addEventListener('contextmenu', (e) => {
 widget.addEventListener('dblclick', () => {
   window.claudeState.refreshUsage();
 });
+
+let dragging = false;
+let dragOrigin = null;
+
+widget.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  dragging = true;
+  dragOrigin = { x: e.screenX, y: e.screenY };
+  try { widget.setPointerCapture(e.pointerId); } catch {}
+});
+
+widget.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  const dx = e.screenX - dragOrigin.x;
+  const dy = e.screenY - dragOrigin.y;
+  if (dx === 0 && dy === 0) return;
+  dragOrigin = { x: e.screenX, y: e.screenY };
+  window.claudeState.moveWidget(dx, dy);
+});
+
+const endDrag = (e) => {
+  if (!dragging) return;
+  dragging = false;
+  dragOrigin = null;
+  try { widget.releasePointerCapture(e.pointerId); } catch {}
+};
+widget.addEventListener('pointerup', endDrag);
+widget.addEventListener('pointercancel', endDrag);

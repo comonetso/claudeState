@@ -415,3 +415,9 @@ ipcMain.handle('widget:hide', () => {
 ipcMain.handle('widget:context-menu', () => {
   showWidgetContextMenu();
 });
+
+ipcMain.handle('widget:move', (_event, dx, dy) => {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  const [x, y] = widgetWindow.getPosition();
+  widgetWindow.setPosition(Math.round(x + dx), Math.round(y + dy), false);
+});
