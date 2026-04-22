@@ -20,6 +20,7 @@ Right-click the widget to open settings or hide it. Sits above your normal windo
 - **Encrypted credentials** — cookie stored via OS credential store (Windows DPAPI via `safeStorage`)
 - **Multi-monitor aware** — remembers position across displays, including negative X
 - **Auto-update** — checks GitHub Releases on launch and hourly; notifies when an update is ready, applies on next restart
+- **Telegram notifications** — get a message the moment your 5-hour session resets, so you can start fresh immediately
 
 ---
 
@@ -123,6 +124,7 @@ The cookie is encrypted via `safeStorage` (DPAPI on Windows) and stored in `%APP
 | Hide / show | Tray → "Show widget" checkbox, or widget right-click → Hide |
 | Reset position | Tray → "Reset position" |
 | View log | Tray → "View log" (live-tails the log file) |
+| Check for updates | Tray → "Check for updates" |
 | Quit | Tray → Quit |
 
 ---
@@ -144,6 +146,46 @@ A second launch just pops a toast ("Already running. Check the tray icon.") and 
 
 ### Running from VSCode integrated terminal
 VSCode sets `ELECTRON_RUN_AS_NODE=1`, which breaks `electron .` directly. Always use `npm start` / `npm run dev` — `scripts/run.js` strips that env var before spawning Electron.
+
+---
+
+## Telegram notifications (session reset alert)
+
+The 5-hour session window starts counting from your **first message** after a reset.
+Knowing the exact moment it resets lets you jump in right away instead of finding out mid-conversation.
+
+### Setup
+
+**Step 1 — Create a Telegram bot (one time)**
+
+1. Open Telegram and search for **@BotFather**.
+2. Send `/newbot`, choose a name and username.
+3. BotFather gives you a token like `1234567890:ABCdef...` — copy it.
+
+**Step 2 — Link the bot to your account**
+
+1. Open **Settings** in claudeState → scroll to **Telegram Notifications**.
+2. Paste the token into the **Bot Token** field.
+3. Go to Telegram, find your new bot, and send it **`/start`** (or any message).
+4. Click **"Link my Telegram"** in the settings window — the app calls `getUpdates` to find your Chat ID automatically.
+5. Status changes to **"Linked: [your name]"**.
+6. Click **"Send test message"** to verify.
+
+> You must send `/start` to the bot **before** clicking "Link my Telegram",
+> otherwise the app has no message to read the Chat ID from.
+
+### What you receive
+
+When your 5-hour session resets, claudeState sends:
+
+```
+✅ Claude session reset
+
+Your 5-hour window is fully available.
+Weekly usage: 33%
+```
+
+No polling, no extra services — it detects the reset during the normal refresh cycle (every 3 minutes by default).
 
 ---
 

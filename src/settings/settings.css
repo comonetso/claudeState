@@ -201,3 +201,16 @@ button.small {
   padding: 5px 10px;
   font-size: 11px;
 }
+
+.telegram-guide {
+  font-size: 11px;
+  color: #9aa0a6;
+  line-height: 1.7;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid #3a3a42;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 0;
+}
+
+.telegram-guide b { color: #e5e7eb; }
