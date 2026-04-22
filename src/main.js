@@ -371,7 +371,10 @@ async function refreshUsage() {
     console.log(`[claudeState] 갱신: 세션 ${n.sessionPercent ?? '?'}% / 주간 ${n.weeklyPercent ?? '?'}%`);
 
     if (lastSessionResetAt && n.sessionResetAt && n.sessionResetAt !== lastSessionResetAt) {
-      onSessionReset(n.weeklyPercent ?? 0);
+      const prevExpired = new Date(lastSessionResetAt).getTime() < Date.now();
+      if (prevExpired) {
+        onSessionReset(n.weeklyPercent ?? 0);
+      }
     }
     lastSessionResetAt = n.sessionResetAt ?? lastSessionResetAt;
 
