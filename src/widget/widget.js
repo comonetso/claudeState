@@ -8,6 +8,19 @@ const statusEl = document.getElementById('status');
 const widget = document.getElementById('widget');
 
 let lastPayload = null;
+let dict = {};
+
+function t(key, ...args) {
+  let v = dict[key];
+  if (v == null) return key;
+  if (typeof v === 'string' && args.length) {
+    v = v.replace(/\{(\d+)\}/g, (_, i) => {
+      const val = args[Number(i)];
+      return val == null ? '' : String(val);
+    });
+  }
+  return v;
+}
 
 function setBar(barEl, textEl, percent) {
   if (percent == null || Number.isNaN(percent)) {
@@ -34,12 +47,12 @@ function resetAtLabel(iso) {
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
   const h = d.getHours();
-  const ap = h < 12 ? '오전' : '오후';
+  const ap = h < 12 ? t('widget.am') : t('widget.pm');
   const h12 = h % 12 === 0 ? 12 : h % 12;
   const mm = String(d.getMinutes()).padStart(2, '0');
   const timePart = `${ap} ${h12}:${mm}`;
   if (sameDay) return timePart;
-  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const days = dict['widget.weekdays'] || ['일', '월', '화', '수', '목', '금', '토'];
   return `${timePart} (${days[d.getDay()]})`;
 }
 
@@ -54,14 +67,14 @@ function sessionWhenLabel(iso) {
 function untilHuman(iso) {
   if (!iso) return '--';
   const diff = new Date(iso).getTime() - Date.now();
-  if (!Number.isFinite(diff) || diff <= 0) return '곧 재설정';
+  if (!Number.isFinite(diff) || diff <= 0) return t('widget.resetsSoon');
   const mins = Math.floor(diff / 60000);
   const days = Math.floor(mins / 1440);
   const hours = Math.floor((mins % 1440) / 60);
   const m = mins % 60;
-  if (days >= 1) return `${days}일 ${hours}시간 후`;
-  if (hours >= 1) return `${hours}시간 ${m}분 후`;
-  return `${m}분 후`;
+  if (days >= 1) return t('widget.daysLater', days, hours);
+  if (hours >= 1) return t('widget.hoursLater', hours, m);
+  return t('widget.minsLater', m);
 }
 
 function render(payload) {
@@ -69,13 +82,13 @@ function render(payload) {
   widget.classList.remove('auth-expired');
 
   if (payload.status === 'unconfigured') {
-    statusEl.textContent = '설정 필요';
+    statusEl.textContent = t('widget.status.unconfigured');
     statusEl.className = 'status error';
     setBar(sessionBar, sessionText, null);
     setBar(weeklyBar, weeklyText, null);
-    sessionWhen.textContent = '쿠키 입력';
-    weeklyWhen.textContent = '우클릭 → 설정';
-    widget.title = '우클릭 → 설정 (쿠키/orgId 입력 필요)';
+    sessionWhen.textContent = t('widget.status.needCookie');
+    weeklyWhen.textContent = t('widget.status.rightClickSettings');
+    widget.title = t('widget.tooltip.needSettings');
     return;
   }
 
@@ -85,9 +98,9 @@ function render(payload) {
     statusEl.className = 'status error';
     sessionText.textContent = '!!';
     weeklyText.textContent = '!!';
-    sessionWhen.textContent = '쿠키 만료';
-    weeklyWhen.textContent = '우클릭→설정 갱신';
-    widget.title = `⚠ 쿠키 만료/인증 실패\n${payload.message}\n\n트레이 우클릭 → 설정 → Session Cookie 재입력`;
+    sessionWhen.textContent = t('widget.status.cookieExpired');
+    weeklyWhen.textContent = t('widget.status.rightClickRefresh');
+    widget.title = t('widget.tooltip.authExpired', payload.message);
     return;
   }
 
@@ -98,11 +111,11 @@ function render(payload) {
   }
 
   if (payload.status === 'error') {
-    statusEl.textContent = '오류';
+    statusEl.textContent = t('widget.status.error');
     statusEl.className = 'status error';
     sessionWhen.textContent = '-';
     weeklyWhen.textContent = '-';
-    widget.title = `오류: ${payload.message}`;
+    widget.title = t('widget.tooltip.error', payload.message);
     return;
   }
 
@@ -116,8 +129,8 @@ function render(payload) {
     weeklyWhen.textContent = resetAtLabel(n.weeklyResetAt);
 
     const tooltip = [
-      `세션: ${n.sessionPercent ?? '?'}% — ${resetAtLabel(n.sessionResetAt)} 재설정 (${untilHuman(n.sessionResetAt)})`,
-      `주간 전체: ${n.weeklyPercent ?? '?'}% — ${resetAtLabel(n.weeklyResetAt)} 재설정 (${untilHuman(n.weeklyResetAt)})`,
+      `${t('widget.session')}: ${n.sessionPercent ?? '?'}% — ${resetAtLabel(n.sessionResetAt)} ${t('widget.reset')} (${untilHuman(n.sessionResetAt)})`,
+      `${t('widget.weeklyAll')}: ${n.weeklyPercent ?? '?'}% — ${resetAtLabel(n.weeklyResetAt)} ${t('widget.reset')} (${untilHuman(n.weeklyResetAt)})`,
       n.sonnetPercent != null ? `Sonnet: ${n.sonnetPercent}% — ${resetAtLabel(n.sonnetResetAt)}` : null,
       n.opusPercent != null ? `Opus: ${n.opusPercent}% — ${resetAtLabel(n.opusResetAt)}` : null
     ].filter(Boolean).join('\n');
@@ -134,6 +147,20 @@ function tickRecompute() {
 }
 
 setInterval(tickRecompute, 60 * 1000);
+
+(async () => {
+  try {
+    const i = await window.claudeState.getI18n();
+    dict = i.dict || {};
+    document.documentElement.lang = i.language;
+  } catch {}
+})();
+
+window.claudeState.onI18nChanged((payload) => {
+  dict = payload.dict || {};
+  document.documentElement.lang = payload.language;
+  if (lastPayload) render(lastPayload);
+});
 
 window.claudeState.onUsageUpdate(render);
 

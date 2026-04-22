@@ -3,48 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';">
-  <title>claudeState 설정</title>
+  <title data-i18n="settings.title">claudeState 설정</title>
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <div class="container">
-    <h1>claudeState 설정</h1>
+    <h1 data-i18n="settings.header">claudeState 설정</h1>
 
     <div class="field">
-      <label for="orgId">Organization ID</label>
-      <input type="text" id="orgId" placeholder="예: da39b20c-1aee-4add-bbc6-7d876b5492fb" />
-      <p class="hint">claude.ai 네트워크 탭에서 <code>/api/organizations/{UUID}/...</code> 에 보이는 UUID</p>
+      <label for="orgId" data-i18n="settings.orgIdLabel">Organization ID</label>
+      <input type="text" id="orgId" data-i18n-placeholder="settings.orgIdPlaceholder" />
+      <p class="hint" data-i18n-html="settings.orgIdHint"></p>
     </div>
 
     <div class="field">
-      <label for="sessionCookie">Session Cookie (sessionKey)</label>
-      <textarea id="sessionCookie" rows="3" placeholder="sk-ant-sid02-..."></textarea>
-      <p class="hint">claude.ai 개발자도구 → Application → Cookies → <code>sessionKey</code> 값</p>
+      <label for="sessionCookie" data-i18n="settings.cookieLabel">Session Cookie (sessionKey)</label>
+      <textarea id="sessionCookie" rows="3" data-i18n-placeholder="settings.cookiePlaceholder"></textarea>
+      <p class="hint" data-i18n-html="settings.cookieHint"></p>
     </div>
 
     <div class="field">
-      <label for="refreshInterval">새로고침 간격 (초)</label>
+      <label for="refreshInterval" data-i18n="settings.intervalLabel">새로고침 간격 (초)</label>
       <input type="number" id="refreshInterval" min="10" max="3600" step="10" value="300" />
-      <p class="hint">범위: 10 ~ 3600초 / 기본: 300초 (5분)</p>
+      <p class="hint" data-i18n="settings.intervalHint"></p>
+    </div>
+
+    <div class="field">
+      <label for="language" data-i18n="settings.languageLabel">언어 (Language)</label>
+      <select id="language">
+        <option value="ko">한국어</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="opacity" data-i18n="settings.opacityLabel">위젯 투명도</label>
+      <div class="slider-row">
+        <input type="range" id="opacity" min="30" max="100" step="5" value="100" />
+        <span class="opacity-value" id="opacity-value">100%</span>
+      </div>
+      <p class="hint" data-i18n="settings.opacityHint"></p>
     </div>
 
     <div class="field checkbox-field">
       <label class="checkbox-label">
         <input type="checkbox" id="autoLaunch" />
-        <span>Windows 시작 시 자동 실행</span>
+        <span data-i18n="settings.autoLaunch">Windows 시작 시 자동 실행</span>
       </label>
     </div>
 
     <div class="status" id="status"></div>
 
     <div class="actions">
-      <button id="test-btn" class="secondary">지금 새로고침</button>
-      <button id="save-btn" class="primary">저장</button>
+      <button id="test-btn" class="secondary" data-i18n="settings.testBtn">지금 새로고침</button>
+      <button id="save-btn" class="primary" data-i18n="settings.saveBtn">저장</button>
     </div>
 
-    <p class="note">
-      쿠키는 OS 자격증명 저장소(safeStorage)로 암호화되어 저장됩니다.
-    </p>
+    <p class="note" data-i18n="settings.note"></p>
   </div>
   <script src="settings.js"></script>
 </body>

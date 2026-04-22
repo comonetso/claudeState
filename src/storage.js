@@ -63,6 +63,33 @@ function setWidgetVisible(visible) {
   writeJSON(STATE_FILE(), state);
 }
 
+function getWidgetOpacity() {
+  const v = readJSON(STATE_FILE())?.widgetOpacity;
+  if (typeof v === 'number' && v >= 0.3 && v <= 1.0) return v;
+  return 1.0;
+}
+
+function setWidgetOpacity(opacity) {
+  const n = Math.max(0.3, Math.min(1.0, Number(opacity)));
+  const state = readJSON(STATE_FILE()) ?? {};
+  state.widgetOpacity = n;
+  writeJSON(STATE_FILE(), state);
+  return n;
+}
+
+function getLanguage() {
+  const v = readJSON(STATE_FILE())?.language;
+  return v === 'en' || v === 'ko' ? v : 'ko';
+}
+
+function setLanguage(lang) {
+  const v = lang === 'en' ? 'en' : 'ko';
+  const state = readJSON(STATE_FILE()) ?? {};
+  state.language = v;
+  writeJSON(STATE_FILE(), state);
+  return v;
+}
+
 function getCredentials() {
   try {
     const file = CREDS_FILE();
@@ -96,5 +123,9 @@ module.exports = {
   getAutoLaunch,
   setAutoLaunch,
   getWidgetVisible,
-  setWidgetVisible
+  setWidgetVisible,
+  getWidgetOpacity,
+  setWidgetOpacity,
+  getLanguage,
+  setLanguage
 };

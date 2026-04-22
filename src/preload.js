@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('claudeState', {
   moveWidget: (dx, dy) => ipcRenderer.invoke('widget:move', dx, dy),
   widgetDragStart: () => ipcRenderer.invoke('widget:drag-start'),
   setWidgetPosition: (x, y) => ipcRenderer.invoke('widget:set-position', x, y),
+  getI18n: () => ipcRenderer.invoke('i18n:get'),
+  onI18nChanged: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('i18n:changed', listener);
+    return () => ipcRenderer.removeListener('i18n:changed', listener);
+  },
   onUsageUpdate: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('usage:update', listener);

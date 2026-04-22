@@ -4,8 +4,12 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const storage = require('./storage');
 const api = require('./api');
+const i18n = require('./i18n');
+const { t } = i18n;
 
 app.setAppUserModelId('com.comonetso.claudestate');
+
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -15,8 +19,8 @@ if (!app.requestSingleInstanceLock()) {
 app.on('second-instance', () => {
   try {
     new Notification({
-      title: 'claudeState',
-      body: '이미 실행 중입니다. 트레이 아이콘을 확인하세요.',
+      title: t('app.name'),
+      body: t('toast.alreadyRunning'),
       silent: false
     }).show();
   } catch (e) {
@@ -116,8 +120,8 @@ function createWidgetWindow() {
 
   const saved = storage.getWindowPosition();
   const W = 250, H = 40;
-  const defaultX = workArea.x + workArea.width - W - 5;
-  const defaultY = workArea.y + workArea.height - H - 2;
+  const defaultX = workArea.x + workArea.width - W - 8;
+  const defaultY = workArea.y + workArea.height - H - 8;
 
   const allDisplays = screen.getAllDisplays();
   const inAnyDisplay = (px, py) =>
@@ -156,7 +160,8 @@ function createWidgetWindow() {
     }
   });
 
-  widgetWindow.setAlwaysOnTop(true, 'screen-saver');
+  widgetWindow.setAlwaysOnTop(true, 'floating');
+  widgetWindow.setOpacity(storage.getWidgetOpacity());
   widgetWindow.loadFile(path.join(__dirname, 'widget', 'index.html'));
 
   widgetWindow.webContents.on('context-menu', (e) => {
@@ -203,8 +208,8 @@ function createSettingsWindow() {
 
   settingsWindow = new BrowserWindow({
     width: 480,
-    height: 380,
-    title: 'claudeState 설정',
+    height: 520,
+    title: t('settings.title'),
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -239,7 +244,7 @@ function createTray() {
     icon = nativeImage.createEmpty();
   }
   tray = new Tray(icon);
-  tray.setToolTip('claudeState');
+  tray.setToolTip(t('app.name'));
   rebuildTrayMenu();
 }
 
@@ -248,19 +253,19 @@ function rebuildTrayMenu() {
   const visible = storage.getWidgetVisible();
   const menu = Menu.buildFromTemplate([
     {
-      label: '위젯 표시',
+      label: t('tray.showWidget'),
       type: 'checkbox',
       checked: visible,
       click: () => (visible ? hideWidget() : showWidget())
     },
-    { label: '설정', click: () => createSettingsWindow() },
-    { label: '지금 새로고침', click: () => refreshUsage() },
+    { label: t('tray.settings'), click: () => createSettingsWindow() },
+    { label: t('tray.refreshNow'), click: () => refreshUsage() },
     { type: 'separator' },
-    { label: '위치 초기화 (우하단으로)', enabled: visible, click: () => resetWidgetPosition() },
-    { label: '로그 보기', click: () => openLogViewer() },
-    { label: '로그 폴더 열기', click: () => { if (logFilePath) shell.showItemInFolder(logFilePath); } },
+    { label: t('tray.resetPosition'), enabled: visible, click: () => resetWidgetPosition() },
+    { label: t('tray.viewLog'), click: () => openLogViewer() },
+    { label: t('tray.openLogFolder'), click: () => { if (logFilePath) shell.showItemInFolder(logFilePath); } },
     { type: 'separator' },
-    { label: '종료', click: () => app.quit() }
+    { label: t('tray.quit'), click: () => app.quit() }
   ]);
   tray.setContextMenu(menu);
 }
@@ -286,10 +291,10 @@ function hideWidget() {
 function showWidgetContextMenu() {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;
   const menu = Menu.buildFromTemplate([
-    { label: '지금 새로고침', click: () => refreshUsage() },
-    { label: '설정', click: () => createSettingsWindow() },
+    { label: t('context.refreshNow'), click: () => refreshUsage() },
+    { label: t('context.settings'), click: () => createSettingsWindow() },
     { type: 'separator' },
-    { label: '숨기기', click: () => hideWidget() }
+    { label: t('context.hide'), click: () => hideWidget() }
   ]);
   menu.popup({ window: widgetWindow });
 }
@@ -298,8 +303,8 @@ function resetWidgetPosition() {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;
   const display = screen.getPrimaryDisplay();
   const a = display.workArea;
-  const x = a.x + a.width - 255;
-  const y = a.y + a.height - 42;
+  const x = a.x + a.width - 258;
+  const y = a.y + a.height - 48;
   widgetWindow.setPosition(x, y, false);
   storage.setWindowPosition({ x, y });
 }
@@ -347,6 +352,7 @@ function startFetchLoop() {
 
 app.whenReady().then(() => {
   installLogTee();
+  i18n.setLanguage(storage.getLanguage());
   syncAutoLaunch();
   createWidgetWindow();
   createTray();
@@ -370,31 +376,66 @@ ipcMain.handle('settings:get', () => {
     hasCookie: Boolean(creds?.sessionCookie),
     orgId: creds?.orgId ?? '',
     refreshIntervalSec: storage.getRefreshIntervalSec(),
-    autoLaunch: storage.getAutoLaunch()
+    autoLaunch: storage.getAutoLaunch(),
+    language: storage.getLanguage(),
+    widgetOpacity: storage.getWidgetOpacity()
   };
 });
 
 ipcMain.handle('settings:save', async (_event, payload) => {
   const existing = storage.getCredentials() ?? {};
-  storage.setCredentials({
-    sessionCookie: payload.sessionCookie ?? existing.sessionCookie,
-    orgId: payload.orgId ?? existing.orgId
-  });
+  if (payload.sessionCookie || payload.orgId) {
+    storage.setCredentials({
+      sessionCookie: payload.sessionCookie ?? existing.sessionCookie,
+      orgId: payload.orgId ?? existing.orgId
+    });
+  }
 
+  let intervalChanged = false;
   if (typeof payload.refreshIntervalSec === 'number') {
     const clamped = Math.max(MIN_INTERVAL_SEC, Math.min(MAX_INTERVAL_SEC, Math.round(payload.refreshIntervalSec)));
-    storage.setRefreshIntervalSec(clamped);
-    startFetchLoop();
-  } else {
-    refreshUsage();
+    if (clamped !== storage.getRefreshIntervalSec()) {
+      storage.setRefreshIntervalSec(clamped);
+      intervalChanged = true;
+    }
   }
 
   if (typeof payload.autoLaunch === 'boolean') {
     storage.setAutoLaunch(payload.autoLaunch);
     syncAutoLaunch();
   }
+
+  if (typeof payload.widgetOpacity === 'number') {
+    const v = storage.setWidgetOpacity(payload.widgetOpacity);
+    if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.setOpacity(v);
+  }
+
+  let languageChanged = false;
+  if (payload.language === 'ko' || payload.language === 'en') {
+    if (payload.language !== storage.getLanguage()) {
+      storage.setLanguage(payload.language);
+      i18n.setLanguage(payload.language);
+      languageChanged = true;
+    }
+  }
+
+  if (languageChanged) {
+    rebuildTrayMenu();
+    broadcast('i18n:changed', { language: i18n.getLanguage(), dict: i18n.getDict() });
+  }
+
+  if (intervalChanged) {
+    startFetchLoop();
+  } else {
+    refreshUsage();
+  }
   return { ok: true };
 });
+
+ipcMain.handle('i18n:get', () => ({
+  language: i18n.getLanguage(),
+  dict: i18n.getDict()
+}));
 
 ipcMain.handle('usage:refresh', () => {
   refreshUsage();
