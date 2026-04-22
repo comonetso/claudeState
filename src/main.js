@@ -370,13 +370,16 @@ async function refreshUsage() {
     const n = data.normalized;
     console.log(`[claudeState] 갱신: 세션 ${n.sessionPercent ?? '?'}% / 주간 ${n.weeklyPercent ?? '?'}%`);
 
+    let resetFired = false;
     if (lastSessionResetAt && n.sessionResetAt !== lastSessionResetAt) {
       const prevExpired = new Date(lastSessionResetAt).getTime() < Date.now();
       if (prevExpired) {
         onSessionReset(n.weeklyPercent ?? 0);
+        resetFired = true;
       }
     }
-    lastSessionResetAt = n.sessionResetAt ?? lastSessionResetAt;
+    // After firing, set null so the next sessionResetAt assignment re-arms cleanly
+    lastSessionResetAt = resetFired ? null : (n.sessionResetAt ?? lastSessionResetAt);
 
     broadcast('usage:update', { status: 'ok', data });
   } catch (err) {
