@@ -7,3 +7,8 @@ out/
 .claude/
 build/*
 !build/installer.nsh
+
+# Internal dev docs — not for public repo
+CLAUDE.md
+SESSION_LOG.md
+docs/
