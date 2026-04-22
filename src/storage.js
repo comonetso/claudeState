@@ -90,6 +90,26 @@ function setLanguage(lang) {
   return v;
 }
 
+function getTelegramBotToken() {
+  return readJSON(STATE_FILE())?.telegramBotToken ?? '';
+}
+
+function setTelegramBotToken(token) {
+  const state = readJSON(STATE_FILE()) ?? {};
+  state.telegramBotToken = String(token ?? '').trim();
+  writeJSON(STATE_FILE(), state);
+}
+
+function getTelegramChatId() {
+  return readJSON(STATE_FILE())?.telegramChatId ?? '';
+}
+
+function setTelegramChatId(chatId) {
+  const state = readJSON(STATE_FILE()) ?? {};
+  state.telegramChatId = String(chatId ?? '').trim();
+  writeJSON(STATE_FILE(), state);
+}
+
 function getCredentials() {
   try {
     const file = CREDS_FILE();
@@ -127,5 +147,9 @@ module.exports = {
   getWidgetOpacity,
   setWidgetOpacity,
   getLanguage,
-  setLanguage
+  setLanguage,
+  getTelegramBotToken,
+  setTelegramBotToken,
+  getTelegramChatId,
+  setTelegramChatId
 };

@@ -59,6 +59,22 @@
       <button id="save-btn" class="primary" data-i18n="settings.saveBtn">저장</button>
     </div>
 
+    <div class="section-divider"></div>
+
+    <h2 class="section-header" data-i18n="settings.telegramHeader">텔레그램 알림</h2>
+
+    <div class="field">
+      <label for="telegramToken" data-i18n="settings.telegramTokenLabel">Bot Token</label>
+      <input type="text" id="telegramToken" data-i18n-placeholder="settings.telegramTokenPlaceholder" autocomplete="off" />
+      <p class="hint" data-i18n="settings.telegramTokenHint"></p>
+    </div>
+
+    <div class="field telegram-status-row">
+      <span id="telegram-status" class="telegram-status" data-i18n="settings.telegramNotLinked">연결 안 됨</span>
+      <button id="telegram-link-btn" class="secondary small" data-i18n="settings.telegramLinkBtn">내 텔레그램과 연결</button>
+      <button id="telegram-test-btn" class="secondary small" data-i18n="settings.telegramTestBtn" disabled>테스트</button>
+    </div>
+
     <p class="note" data-i18n="settings.note"></p>
   </div>
   <script src="settings.js"></script>

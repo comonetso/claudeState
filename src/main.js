@@ -7,6 +7,7 @@ const api = require('./api');
 const i18n = require('./i18n');
 const { t } = i18n;
 const updater = require('./updater');
+const telegram = require('./telegram');
 
 app.setAppUserModelId('com.comonetso.claudestate');
 
@@ -114,6 +115,7 @@ let widgetWindow = null;
 let settingsWindow = null;
 let tray = null;
 let fetchTimer = null;
+let lastSessionResetAt = null;
 
 function createWidgetWindow() {
   const display = screen.getPrimaryDisplay();
@@ -209,7 +211,7 @@ function createSettingsWindow() {
 
   settingsWindow = new BrowserWindow({
     width: 480,
-    height: 520,
+    height: 660,
     title: t('settings.title'),
     resizable: false,
     minimizable: false,
@@ -367,6 +369,12 @@ async function refreshUsage() {
     const data = await api.fetchUsage(creds.sessionCookie, creds.orgId);
     const n = data.normalized;
     console.log(`[claudeState] 갱신: 세션 ${n.sessionPercent ?? '?'}% / 주간 ${n.weeklyPercent ?? '?'}%`);
+
+    if (lastSessionResetAt && n.sessionResetAt && n.sessionResetAt !== lastSessionResetAt) {
+      onSessionReset(n.weeklyPercent ?? 0);
+    }
+    lastSessionResetAt = n.sessionResetAt ?? lastSessionResetAt;
+
     broadcast('usage:update', { status: 'ok', data });
   } catch (err) {
     if (err.code === 'AUTH_EXPIRED') {
@@ -385,6 +393,14 @@ function broadcast(channel, payload) {
       win.webContents.send(channel, payload);
     }
   });
+}
+
+function onSessionReset(weeklyPercent) {
+  const token = storage.getTelegramBotToken();
+  const chatId = storage.getTelegramChatId();
+  if (!token || !chatId) return;
+  const msg = t('telegram.resetMsg', weeklyPercent ?? 0);
+  telegram.sendMessage(token, chatId, msg).catch(() => {});
 }
 
 function startFetchLoop() {
@@ -494,6 +510,37 @@ ipcMain.handle('i18n:get', () => ({
   language: i18n.getLanguage(),
   dict: i18n.getDict()
 }));
+
+ipcMain.handle('telegram:get', () => ({
+  botToken: storage.getTelegramBotToken(),
+  chatId: storage.getTelegramChatId()
+}));
+
+ipcMain.handle('telegram:save-token', (_e, token) => {
+  storage.setTelegramBotToken(token);
+  return { ok: true };
+});
+
+ipcMain.handle('telegram:link', async (_e, token) => {
+  try {
+    const bot = await telegram.testToken(token);
+    if (!bot) return { ok: false, error: 'invalid_token' };
+    storage.setTelegramBotToken(token);
+    const r = await telegram.resolveFirstChatId(token);
+    storage.setTelegramChatId(r.chatId);
+    return { ok: true, name: r.name, chatId: r.chatId };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('telegram:test', async () => {
+  const token = storage.getTelegramBotToken();
+  const chatId = storage.getTelegramChatId();
+  if (!token || !chatId) return { ok: false, error: 'not_linked' };
+  const ok = await telegram.sendMessage(token, chatId, '✅ claudeState 텔레그램 연결 테스트 성공!');
+  return { ok };
+});
 
 ipcMain.handle('usage:refresh', () => {
   refreshUsage();

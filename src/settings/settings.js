@@ -1,4 +1,8 @@
 const orgIdInput = document.getElementById('orgId');
+const telegramTokenInput = document.getElementById('telegramToken');
+const telegramStatusEl = document.getElementById('telegram-status');
+const telegramLinkBtn = document.getElementById('telegram-link-btn');
+const telegramTestBtn = document.getElementById('telegram-test-btn');
 const cookieInput = document.getElementById('sessionCookie');
 const intervalInput = document.getElementById('refreshInterval');
 const autoLaunchInput = document.getElementById('autoLaunch');
@@ -59,6 +63,22 @@ async function load() {
   opacityValueEl.textContent = `${opacityPct}%`;
   if (s.hasCookie) {
     cookieInput.placeholder = t('settings.cookieSaved');
+  }
+
+  const tg = await window.claudeState.getTelegram();
+  if (tg.botToken) telegramTokenInput.value = tg.botToken;
+  setTelegramLinkedState(tg.chatId ? tg.chatId : null);
+}
+
+function setTelegramLinkedState(chatId) {
+  if (chatId) {
+    telegramStatusEl.textContent = t('settings.telegramLinked', chatId);
+    telegramStatusEl.className = 'telegram-status linked';
+    telegramTestBtn.disabled = false;
+  } else {
+    telegramStatusEl.textContent = t('settings.telegramNotLinked');
+    telegramStatusEl.className = 'telegram-status';
+    telegramTestBtn.disabled = true;
   }
 }
 
@@ -128,6 +148,31 @@ saveBtn.addEventListener('click', async () => {
 testBtn.addEventListener('click', () => {
   window.claudeState.refreshUsage();
   setStatus(t('settings.msg.refreshRequested'), 'ok');
+});
+
+telegramLinkBtn.addEventListener('click', async () => {
+  const token = telegramTokenInput.value.trim();
+  if (!token) { setStatus(t('settings.telegramInvalidToken'), 'err'); return; }
+  telegramLinkBtn.disabled = true;
+  setStatus(t('settings.telegramLinking'), '');
+  const r = await window.claudeState.telegramLink(token);
+  telegramLinkBtn.disabled = false;
+  if (r.ok) {
+    setTelegramLinkedState(r.chatId);
+    setStatus(t('settings.telegramLinked', r.name || r.chatId), 'ok');
+  } else {
+    const msg = r.error === 'invalid_token'
+      ? t('settings.telegramInvalidToken')
+      : t('settings.telegramLinkFail');
+    setStatus(msg, 'err');
+  }
+});
+
+telegramTestBtn.addEventListener('click', async () => {
+  telegramTestBtn.disabled = true;
+  const r = await window.claudeState.telegramTest();
+  telegramTestBtn.disabled = false;
+  setStatus(r.ok ? t('settings.telegramTestSent') : t('settings.telegramTestFail'), r.ok ? 'ok' : 'err');
 });
 
 window.claudeState.onI18nChanged((payload) => {
