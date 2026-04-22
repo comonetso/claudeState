@@ -19,6 +19,7 @@ Claude 사용량(세션 + 주간)을 작업표시줄 옆에 작게 띄워놓는 
 - **투명도 조절** — 30% – 100% 슬라이더
 - **자격증명 암호화** — OS 자격증명 저장소(Windows DPAPI, `safeStorage`) 사용
 - **멀티모니터 대응** — 음수 X 좌표까지 기억
+- **자동 업데이트** — 앱 시작 시 + 1시간마다 GitHub Releases를 체크, 새 버전이 있으면 토스트로 알리고 재시작 시 자동 설치
 
 ---
 
@@ -143,6 +144,34 @@ claude.ai의 세션 쿠키가 로테이션된 상태. claude.ai 재로그인 →
 
 ### VSCode 통합 터미널에서 실행
 VSCode가 `ELECTRON_RUN_AS_NODE=1`을 설정해 놓아서 `electron .`을 직접 실행하면 깨집니다. 반드시 `npm start` / `npm run dev`로 — `scripts/run.js`가 해당 환경변수를 제거한 뒤 Electron을 스폰합니다.
+
+---
+
+## 자동 업데이트
+
+`electron-updater`가 GitHub Releases의 `latest.yml`을 읽어 새 버전을 판별합니다.
+
+- **앱 시작 시** (기동 10초 후) + **1시간마다** 최신 릴리즈를 조회합니다.
+- 새 버전이 있으면 백그라운드로 다운로드 후 Windows 토스트 알림.
+- 다음 앱 종료/재시작 시 자동 설치. 즉시 적용하려면 트레이 → **"재시작하여 v… 설치"**.
+- 개발 실행(`npm start`)에서는 업데이트 체크를 스킵합니다. 패키지 빌드에서만 작동.
+
+### 새 릴리즈 배포 (유지보수자용)
+
+1. [package.json](package.json)의 `version` 을 올립니다.
+2. GitHub PAT (`repo` scope)를 환경변수로 설정:
+   ```powershell
+   $env:GH_TOKEN = "ghp_토큰값"
+   ```
+3. 빌드 + 퍼블리시 한 번에:
+   ```powershell
+   npm run release
+   ```
+4. `electron-builder`가 NSIS 인스톨러 + `latest.yml` + `*.blockmap`을 빌드해서 GitHub Release draft로 업로드합니다. 사용자 앱은 다음 기동/1시간 주기 체크에서 자동 감지.
+
+로컬에서 인스톨러만 만들고 **퍼블리시 없이** 빌드하려면 `npm run dist`.
+
+> XML이 필요한지 물으셨는데, `electron-updater`는 **YAML (`latest.yml`)** 을 사용하며 이건 `--publish=always` 빌드 시 `electron-builder`가 자동 생성 + 업로드합니다. 수동 관리 파일 없음.
 
 ---
 

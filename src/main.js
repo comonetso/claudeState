@@ -6,6 +6,7 @@ const storage = require('./storage');
 const api = require('./api');
 const i18n = require('./i18n');
 const { t } = i18n;
+const updater = require('./updater');
 
 app.setAppUserModelId('com.comonetso.claudestate');
 
@@ -251,7 +252,8 @@ function createTray() {
 function rebuildTrayMenu() {
   if (!tray) return;
   const visible = storage.getWidgetVisible();
-  const menu = Menu.buildFromTemplate([
+  const updateState = updater.getState();
+  const items = [
     {
       label: t('tray.showWidget'),
       type: 'checkbox',
@@ -264,10 +266,53 @@ function rebuildTrayMenu() {
     { label: t('tray.resetPosition'), enabled: visible, click: () => resetWidgetPosition() },
     { label: t('tray.viewLog'), click: () => openLogViewer() },
     { label: t('tray.openLogFolder'), click: () => { if (logFilePath) shell.showItemInFolder(logFilePath); } },
-    { type: 'separator' },
-    { label: t('tray.quit'), click: () => app.quit() }
-  ]);
-  tray.setContextMenu(menu);
+    { type: 'separator' }
+  ];
+
+  if (updateState.status === 'downloaded') {
+    items.push({
+      label: t('tray.installUpdate', updateState.latestVersion ?? ''),
+      click: () => updater.quitAndInstall()
+    });
+  } else if (updateState.status === 'downloading') {
+    items.push({
+      label: t('tray.downloadingUpdate', updateState.progress ?? 0),
+      enabled: false
+    });
+  } else if (app.isPackaged) {
+    items.push({
+      label: t('tray.checkForUpdates'),
+      click: () => triggerManualUpdateCheck()
+    });
+  }
+
+  items.push({
+    label: `${t('app.name')} v${app.getVersion()}`,
+    enabled: false
+  });
+  items.push({ label: t('tray.quit'), click: () => app.quit() });
+
+  tray.setContextMenu(Menu.buildFromTemplate(items));
+}
+
+async function triggerManualUpdateCheck() {
+  try {
+    new Notification({
+      title: t('app.name'),
+      body: t('update.checkingBody'),
+      silent: true
+    }).show();
+  } catch {}
+  const info = await updater.checkNow({ silent: false });
+  if (!info || info.version === app.getVersion()) {
+    try {
+      new Notification({
+        title: t('app.name'),
+        body: t('update.notAvailableBody', app.getVersion()),
+        silent: true
+      }).show();
+    } catch {}
+  }
 }
 
 function showWidget() {
@@ -357,6 +402,19 @@ app.whenReady().then(() => {
   createWidgetWindow();
   createTray();
   startFetchLoop();
+
+  if (app.isPackaged) {
+    updater.setup({
+      t,
+      onStateChange: () => rebuildTrayMenu()
+    });
+    setTimeout(() => {
+      updater.checkNow({ silent: true }).catch(() => {});
+    }, 10 * 1000);
+    setInterval(() => {
+      updater.checkNow({ silent: true }).catch(() => {});
+    }, 60 * 60 * 1000);
+  }
 });
 
 app.on('window-all-closed', (e) => {

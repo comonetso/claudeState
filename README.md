@@ -19,6 +19,7 @@ Right-click the widget to open settings or hide it. Sits above your normal windo
 - **Adjustable opacity** — 30% – 100% slider
 - **Encrypted credentials** — cookie stored via OS credential store (Windows DPAPI via `safeStorage`)
 - **Multi-monitor aware** — remembers position across displays, including negative X
+- **Auto-update** — checks GitHub Releases on launch and hourly; notifies when an update is ready, applies on next restart
 
 ---
 
@@ -143,6 +144,32 @@ A second launch just pops a toast ("Already running. Check the tray icon.") and 
 
 ### Running from VSCode integrated terminal
 VSCode sets `ELECTRON_RUN_AS_NODE=1`, which breaks `electron .` directly. Always use `npm start` / `npm run dev` — `scripts/run.js` strips that env var before spawning Electron.
+
+---
+
+## Auto-update
+
+Auto-update uses `electron-updater` reading from GitHub Releases.
+
+- **On launch** (10s after startup) and **every hour** the app fetches `latest.yml` from the latest GitHub Release.
+- If a newer version exists, it downloads in the background and shows a Windows toast.
+- The new version is installed on next app quit (automatically) or immediately via tray → **"Restart to install v…"**.
+- Development runs (`npm start`) skip the update check — only packaged builds call the updater.
+
+### Publishing a new release (maintainer workflow)
+
+1. Bump `version` in [package.json](package.json).
+2. Set a GitHub Personal Access Token with `repo` scope:
+   ```powershell
+   $env:GH_TOKEN = "ghp_yourToken"
+   ```
+3. Build and publish in one shot:
+   ```powershell
+   npm run release
+   ```
+4. `electron-builder` will build the NSIS installer, upload it to a new GitHub Release draft along with `latest.yml` and `*.blockmap`, and the app's updater will pick it up automatically on all users' next launch.
+
+To build a local installer **without publishing**, use `npm run dist` instead.
 
 ---
 

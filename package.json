@@ -1,15 +1,16 @@
 {
   "name": "claude-state",
   "productName": "claudeState",
-  "version": "0.1.0",
-  "description": "Claude 사용량을 작업표시줄에 표시하는 위젯",
+  "version": "0.2.0",
+  "description": "Claude usage taskbar widget (i18n, opacity, auto-update)",
   "main": "src/main.js",
   "scripts": {
     "start": "node scripts/run.js",
     "dev": "node scripts/run.js --dev",
     "make-icon": "node scripts/make-icon.js",
-    "dist": "npm run make-icon && electron-builder --win",
-    "pack": "npm run make-icon && electron-builder --win --dir"
+    "pack": "npm run make-icon && electron-builder --win --dir",
+    "dist": "npm run make-icon && electron-builder --win --publish=never",
+    "release": "npm run make-icon && electron-builder --win --publish=always"
   },
   "author": "comonetso",
   "license": "MIT",
@@ -35,9 +36,27 @@
     "extraMetadata": {
       "main": "src/main.js"
     },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/electron-log/**/*",
+      "node_modules/electron-updater/**/*"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "comonetso",
+        "repo": "claudeState",
+        "releaseType": "release"
+      }
+    ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png",
       "artifactName": "${productName}-${version}-${arch}-${ext}.${ext}"
@@ -52,5 +71,9 @@
       "menuCategory": "claudeState",
       "include": "build/installer.nsh"
     }
+  },
+  "dependencies": {
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3"
   }
 }
