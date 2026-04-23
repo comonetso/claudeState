@@ -30,8 +30,7 @@ app.on('second-instance', () => {
   }
   if (widgetWindow && !widgetWindow.isDestroyed()) {
     if (widgetWindow.isMinimized()) widgetWindow.restore();
-    widgetWindow.show();
-    widgetWindow.focus();
+    widgetWindow.showInactive();
   }
 });
 
@@ -115,7 +114,7 @@ let widgetWindow = null;
 let settingsWindow = null;
 let tray = null;
 let fetchTimer = null;
-let lastSessionResetAt = null;
+let visibilityWatchdogTimer = null;
 
 function createWidgetWindow() {
   const display = screen.getPrimaryDisplay();
@@ -163,7 +162,8 @@ function createWidgetWindow() {
     }
   });
 
-  widgetWindow.setAlwaysOnTop(true, 'floating');
+  // 'normal' level: DWM 강제 최상위 해제 — 풀스크린 앱/작업표시줄 클릭 블로킹 방지
+  widgetWindow.setAlwaysOnTop(true, 'normal');
   widgetWindow.setOpacity(storage.getWidgetOpacity());
   widgetWindow.loadFile(path.join(__dirname, 'widget', 'index.html'));
 
@@ -193,6 +193,11 @@ function createWidgetWindow() {
   widgetWindow.on('moved', persistPosition);
 
   widgetWindow.on('close', persistPosition);
+
+  // 창이 숨겨졌다가 다시 보여질 때 alwaysOnTop 재보증
+  widgetWindow.on('show', () => {
+    widgetWindow.setAlwaysOnTop(true, 'normal');
+  });
 
   widgetWindow.on('closed', () => {
     widgetWindow = null;
@@ -248,7 +253,58 @@ function createTray() {
   }
   tray = new Tray(icon);
   tray.setToolTip(t('app.name'));
+
+  // 좌클릭으로 위젯 숨김/표시 토글
+  tray.on('click', () => {
+    if (storage.getWidgetVisible()) {
+      hideWidget();
+    } else {
+      showWidget();
+    }
+  });
+
   rebuildTrayMenu();
+}
+
+function startVisibilityWatchdog() {
+  if (visibilityWatchdogTimer) clearInterval(visibilityWatchdogTimer);
+  visibilityWatchdogTimer = setInterval(() => {
+    if (!widgetWindow || widgetWindow.isDestroyed()) return;
+    if (!storage.getWidgetVisible()) return; // 사용자가 숨긴 경우는 건드리지 않음
+
+    // isVisible() false면 명확한 복구
+    if (!widgetWindow.isVisible()) {
+      console.warn('[claudeState] 가시성 복구 — showInactive 재호출');
+      widgetWindow.showInactive();
+      widgetWindow.setAlwaysOnTop(true, 'normal');
+      return;
+    }
+
+    // isVisible()=true인데 DWM 레벨에서 잠겨있는 경우가 있음(디스플레이 변경/스크린락 복귀/전체화면 앱 등)
+    // alwaysOnTop 상태가 꺼졌는지 확인해서 복구
+    if (!widgetWindow.isAlwaysOnTop()) {
+      console.warn('[claudeState] alwaysOnTop 해제 감지 — 재설정');
+      widgetWindow.setAlwaysOnTop(true, 'normal');
+    }
+
+    // 주기적 재부상 (moveTop): 드로잉 레이어 강제 갱신 — 풀스크린 앱 후 "사라짐" 복구
+    try { widgetWindow.moveTop(); } catch {}
+  }, 3000);
+}
+
+// 디스플레이 변경 이벤트 시 위젯 강제 재표시
+function attachDisplayChangeHooks() {
+  const recover = () => {
+    if (!widgetWindow || widgetWindow.isDestroyed()) return;
+    if (!storage.getWidgetVisible()) return;
+    console.log('[claudeState] 디스플레이 이벤트 감지 — 위젯 재부상');
+    widgetWindow.showInactive();
+    widgetWindow.setAlwaysOnTop(true, 'normal');
+    try { widgetWindow.moveTop(); } catch {}
+  };
+  screen.on('display-added', recover);
+  screen.on('display-removed', recover);
+  screen.on('display-metrics-changed', recover);
 }
 
 function rebuildTrayMenu() {
@@ -322,7 +378,8 @@ function showWidget() {
   if (!widgetWindow || widgetWindow.isDestroyed()) {
     createWidgetWindow();
   } else {
-    widgetWindow.show();
+    // showInactive로 현재 포커스된 앱의 포커스 유지 — 클릭 블로킹 완화
+    widgetWindow.showInactive();
   }
   rebuildTrayMenu();
 }
@@ -370,16 +427,30 @@ async function refreshUsage() {
     const n = data.normalized;
     console.log(`[claudeState] 갱신: 세션 ${n.sessionPercent ?? '?'}% / 주간 ${n.weeklyPercent ?? '?'}%`);
 
-    let resetFired = false;
-    if (lastSessionResetAt && n.sessionResetAt !== lastSessionResetAt) {
-      const prevExpired = new Date(lastSessionResetAt).getTime() < Date.now();
-      if (prevExpired) {
+    // 세션 리셋 감지 (영속 저장 기반)
+    // 규칙:
+    //   (a) 저장된 prev가 존재하고 이미 과거(만료) → 리셋된 시점 → 발사
+    //   (b) 현재 sessionResetAt이 값이 있으면 저장 (재무장)
+    //   (c) 현재 sessionResetAt이 null이면 저장값을 null로 — 발사 후 재무장 대비
+    // 앱 최초 실행 + 현재 null → prev도 null → 감지 무시 (이미 리셋된 지 오래)
+    const prev = storage.getLastSessionResetAt();
+    const cur = n.sessionResetAt ?? null;
+    if (prev) {
+      const prevExpired = new Date(prev).getTime() < Date.now();
+      const changed = cur !== prev;
+      if (prevExpired && changed) {
+        // prev가 만료된 상태에서 값이 변경됨 → 진짜 리셋 인지
+        console.log(`[claudeState] 세션 리셋 감지: prev=${prev} → cur=${cur ?? 'null'}`);
         onSessionReset(n.weeklyPercent ?? 0);
-        resetFired = true;
+        storage.setLastSessionResetAt(null); // 발사 후 해제 (cur로 덮어쓰기 방지)
+      } else if (cur && cur !== prev) {
+        // prev는 아직 미래 + cur 값이 바뀜 → 단순 상태 갱신
+        storage.setLastSessionResetAt(cur);
       }
+    } else if (cur) {
+      // 첫 관측 또는 발사 후 새 세션 시작 → 재무장
+      storage.setLastSessionResetAt(cur);
     }
-    // After firing, set null so the next sessionResetAt assignment re-arms cleanly
-    lastSessionResetAt = resetFired ? null : (n.sessionResetAt ?? lastSessionResetAt);
 
     broadcast('usage:update', { status: 'ok', data });
   } catch (err) {
@@ -424,6 +495,8 @@ app.whenReady().then(() => {
   createWidgetWindow();
   createTray();
   startFetchLoop();
+  startVisibilityWatchdog();
+  attachDisplayChangeHooks();
 
   if (app.isPackaged) {
     updater.setup({

@@ -110,6 +110,17 @@ function setTelegramChatId(chatId) {
   writeJSON(STATE_FILE(), state);
 }
 
+function getLastSessionResetAt() {
+  const v = readJSON(STATE_FILE())?.lastSessionResetAt;
+  return typeof v === 'string' && v ? v : null;
+}
+
+function setLastSessionResetAt(iso) {
+  const state = readJSON(STATE_FILE()) ?? {};
+  state.lastSessionResetAt = iso ? String(iso) : null;
+  writeJSON(STATE_FILE(), state);
+}
+
 function getCredentials() {
   try {
     const file = CREDS_FILE();
@@ -151,5 +162,7 @@ module.exports = {
   getTelegramBotToken,
   setTelegramBotToken,
   getTelegramChatId,
-  setTelegramChatId
+  setTelegramChatId,
+  getLastSessionResetAt,
+  setLastSessionResetAt
 };
