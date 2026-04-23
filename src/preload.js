@@ -7,7 +7,6 @@ contextBridge.exposeInMainWorld('claudeState', {
   openSettings: () => ipcRenderer.invoke('window:open-settings'),
   quit: () => ipcRenderer.invoke('app:quit'),
   hideWidget: () => ipcRenderer.invoke('widget:hide'),
-  showWidgetContextMenu: () => ipcRenderer.invoke('widget:context-menu'),
   moveWidget: (dx, dy) => ipcRenderer.invoke('widget:move', dx, dy),
   widgetDragStart: () => ipcRenderer.invoke('widget:drag-start'),
   setWidgetPosition: (x, y) => ipcRenderer.invoke('widget:set-position', x, y),
@@ -24,5 +23,10 @@ contextBridge.exposeInMainWorld('claudeState', {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('usage:update', listener);
     return () => ipcRenderer.removeListener('usage:update', listener);
+  },
+  onWidgetOpacity: (handler) => {
+    const listener = (_event, value) => handler(value);
+    ipcRenderer.on('widget:opacity', listener);
+    return () => ipcRenderer.removeListener('widget:opacity', listener);
   }
 });

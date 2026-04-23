@@ -11,8 +11,6 @@ const telegram = require('./telegram');
 
 app.setAppUserModelId('com.comonetso.claudestate');
 
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
-
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   return;
@@ -114,7 +112,6 @@ let widgetWindow = null;
 let settingsWindow = null;
 let tray = null;
 let fetchTimer = null;
-let visibilityWatchdogTimer = null;
 
 function createWidgetWindow() {
   const display = screen.getPrimaryDisplay();
@@ -162,14 +159,11 @@ function createWidgetWindow() {
     }
   });
 
-  // 'normal' level: DWM 강제 최상위 해제 — 풀스크린 앱/작업표시줄 클릭 블로킹 방지
-  widgetWindow.setAlwaysOnTop(true, 'normal');
-  widgetWindow.setOpacity(storage.getWidgetOpacity());
   widgetWindow.loadFile(path.join(__dirname, 'widget', 'index.html'));
 
-  widgetWindow.webContents.on('context-menu', (e) => {
-    e.preventDefault();
-    showWidgetContextMenu();
+  // 불투명도는 CSS 변수로 전달 (setOpacity는 DWM 부작용 위험으로 제거)
+  widgetWindow.webContents.on('did-finish-load', () => {
+    broadcastWidgetOpacity(storage.getWidgetOpacity());
   });
 
   let savePosTimer = null;
@@ -194,17 +188,18 @@ function createWidgetWindow() {
 
   widgetWindow.on('close', persistPosition);
 
-  // 창이 숨겨졌다가 다시 보여질 때 alwaysOnTop 재보증
-  widgetWindow.on('show', () => {
-    widgetWindow.setAlwaysOnTop(true, 'normal');
-  });
-
   widgetWindow.on('closed', () => {
     widgetWindow = null;
   });
 
   if (process.argv.includes('--dev')) {
     widgetWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+}
+
+function broadcastWidgetOpacity(value) {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.webContents.send('widget:opacity', value);
   }
 }
 
@@ -264,47 +259,6 @@ function createTray() {
   });
 
   rebuildTrayMenu();
-}
-
-function startVisibilityWatchdog() {
-  if (visibilityWatchdogTimer) clearInterval(visibilityWatchdogTimer);
-  visibilityWatchdogTimer = setInterval(() => {
-    if (!widgetWindow || widgetWindow.isDestroyed()) return;
-    if (!storage.getWidgetVisible()) return; // 사용자가 숨긴 경우는 건드리지 않음
-
-    // isVisible() false면 명확한 복구
-    if (!widgetWindow.isVisible()) {
-      console.warn('[claudeState] 가시성 복구 — showInactive 재호출');
-      widgetWindow.showInactive();
-      widgetWindow.setAlwaysOnTop(true, 'normal');
-      return;
-    }
-
-    // isVisible()=true인데 DWM 레벨에서 잠겨있는 경우가 있음(디스플레이 변경/스크린락 복귀/전체화면 앱 등)
-    // alwaysOnTop 상태가 꺼졌는지 확인해서 복구
-    if (!widgetWindow.isAlwaysOnTop()) {
-      console.warn('[claudeState] alwaysOnTop 해제 감지 — 재설정');
-      widgetWindow.setAlwaysOnTop(true, 'normal');
-    }
-
-    // 주기적 재부상 (moveTop): 드로잉 레이어 강제 갱신 — 풀스크린 앱 후 "사라짐" 복구
-    try { widgetWindow.moveTop(); } catch {}
-  }, 3000);
-}
-
-// 디스플레이 변경 이벤트 시 위젯 강제 재표시
-function attachDisplayChangeHooks() {
-  const recover = () => {
-    if (!widgetWindow || widgetWindow.isDestroyed()) return;
-    if (!storage.getWidgetVisible()) return;
-    console.log('[claudeState] 디스플레이 이벤트 감지 — 위젯 재부상');
-    widgetWindow.showInactive();
-    widgetWindow.setAlwaysOnTop(true, 'normal');
-    try { widgetWindow.moveTop(); } catch {}
-  };
-  screen.on('display-added', recover);
-  screen.on('display-removed', recover);
-  screen.on('display-metrics-changed', recover);
 }
 
 function rebuildTrayMenu() {
@@ -390,17 +344,6 @@ function hideWidget() {
     widgetWindow.hide();
   }
   rebuildTrayMenu();
-}
-
-function showWidgetContextMenu() {
-  if (!widgetWindow || widgetWindow.isDestroyed()) return;
-  const menu = Menu.buildFromTemplate([
-    { label: t('context.refreshNow'), click: () => refreshUsage() },
-    { label: t('context.settings'), click: () => createSettingsWindow() },
-    { type: 'separator' },
-    { label: t('context.hide'), click: () => hideWidget() }
-  ]);
-  menu.popup({ window: widgetWindow });
 }
 
 function resetWidgetPosition() {
@@ -495,8 +438,6 @@ app.whenReady().then(() => {
   createWidgetWindow();
   createTray();
   startFetchLoop();
-  startVisibilityWatchdog();
-  attachDisplayChangeHooks();
 
   if (app.isPackaged) {
     updater.setup({
@@ -560,7 +501,7 @@ ipcMain.handle('settings:save', async (_event, payload) => {
 
   if (typeof payload.widgetOpacity === 'number') {
     const v = storage.setWidgetOpacity(payload.widgetOpacity);
-    if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.setOpacity(v);
+    broadcastWidgetOpacity(v);
   }
 
   let languageChanged = false;
@@ -635,10 +576,6 @@ ipcMain.handle('app:quit', () => {
 
 ipcMain.handle('widget:hide', () => {
   hideWidget();
-});
-
-ipcMain.handle('widget:context-menu', () => {
-  showWidgetContextMenu();
 });
 
 ipcMain.handle('widget:move', (_event, dx, dy) => {
