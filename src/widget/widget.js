@@ -166,18 +166,12 @@ window.claudeState.onUsageUpdate(render);
 
 widget.addEventListener('contextmenu', (e) => {
   e.preventDefault();
+  window.claudeState.showWidgetContextMenu();
 });
 
 widget.addEventListener('dblclick', () => {
   window.claudeState.refreshUsage();
 });
-
-function applyOpacity(v) {
-  const n = Math.max(0.3, Math.min(1, Number(v) || 1));
-  document.documentElement.style.setProperty('--widget-alpha', n);
-}
-
-window.claudeState.onWidgetOpacity(applyOpacity);
 
 let dragging = false;
 let dragOffset = null;

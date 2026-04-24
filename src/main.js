@@ -57,7 +57,10 @@ function installLogTee() {
     const line = args
       .map((a) => (typeof a === 'string' ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })()))
       .join(' ');
-    const ts = new Date().toISOString();
+    // KST(UTC+9) 기준으로 로컬 타임 형식 출력
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const ts = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     try { logStream.write(`[${ts}] [${tag}] ${line}\n`); } catch {}
     orig(...args);
   };
@@ -143,10 +146,16 @@ function createWidgetWindow() {
   widgetWindow = new BrowserWindow({
     width: 250,
     height: 40,
+    minWidth: 250,
+    maxWidth: 250,
+    minHeight: 40,
+    maxHeight: 40,
+    useContentSize: true,
     x,
     y,
     frame: false,
-    transparent: true,
+    transparent: false,
+    backgroundColor: '#141418',
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
@@ -159,11 +168,23 @@ function createWidgetWindow() {
     }
   });
 
+  // transparent:false 상태에서는 setOpacity가 DWM 이중 투명도 문제 없음
+  widgetWindow.setOpacity(storage.getWidgetOpacity());
+  // alwaysOnTop을 명시적으로 보강 — 작업표시줄 뒤로 숨는 현상 방지
+  widgetWindow.setAlwaysOnTop(true, 'normal');
   widgetWindow.loadFile(path.join(__dirname, 'widget', 'index.html'));
 
-  // 불투명도는 CSS 변수로 전달 (setOpacity는 DWM 부작용 위험으로 제거)
+  widgetWindow.webContents.on('context-menu', (e) => {
+    e.preventDefault();
+    showWidgetContextMenu();
+  });
+
+  // 로드 완료 후 투명도/최상위 재보증 (일부 환경에서 초기 적용이 씹히는 경우 대응)
   widgetWindow.webContents.on('did-finish-load', () => {
-    broadcastWidgetOpacity(storage.getWidgetOpacity());
+    try {
+      widgetWindow.setOpacity(storage.getWidgetOpacity());
+      widgetWindow.setAlwaysOnTop(true, 'normal');
+    } catch {}
   });
 
   let savePosTimer = null;
@@ -194,12 +215,6 @@ function createWidgetWindow() {
 
   if (process.argv.includes('--dev')) {
     widgetWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-}
-
-function broadcastWidgetOpacity(value) {
-  if (widgetWindow && !widgetWindow.isDestroyed()) {
-    widgetWindow.webContents.send('widget:opacity', value);
   }
 }
 
@@ -332,8 +347,17 @@ function showWidget() {
   if (!widgetWindow || widgetWindow.isDestroyed()) {
     createWidgetWindow();
   } else {
-    // showInactive로 현재 포커스된 앱의 포커스 유지 — 클릭 블로킹 완화
     widgetWindow.showInactive();
+    // 트레이 이벤트 컨텍스트에서 벗어나 다음 틱에서 z-order 강제 재평가
+    // (작업표시줄 영역 위에 있을 때 show 이후 복원이 씹히는 증상 방지)
+    setImmediate(() => {
+      if (!widgetWindow || widgetWindow.isDestroyed()) return;
+      const b = widgetWindow.getBounds();
+      widgetWindow.setBounds({ x: b.x, y: b.y, width: 250, height: 40 }, false);
+      widgetWindow.setAlwaysOnTop(false);
+      widgetWindow.setAlwaysOnTop(true, 'normal');
+      widgetWindow.setOpacity(storage.getWidgetOpacity());
+    });
   }
   rebuildTrayMenu();
 }
@@ -344,6 +368,17 @@ function hideWidget() {
     widgetWindow.hide();
   }
   rebuildTrayMenu();
+}
+
+function showWidgetContextMenu() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  const menu = Menu.buildFromTemplate([
+    { label: t('context.refreshNow'), click: () => refreshUsage() },
+    { label: t('context.settings'), click: () => createSettingsWindow() },
+    { type: 'separator' },
+    { label: t('context.hide'), click: () => hideWidget() }
+  ]);
+  menu.popup({ window: widgetWindow });
 }
 
 function resetWidgetPosition() {
@@ -501,7 +536,7 @@ ipcMain.handle('settings:save', async (_event, payload) => {
 
   if (typeof payload.widgetOpacity === 'number') {
     const v = storage.setWidgetOpacity(payload.widgetOpacity);
-    broadcastWidgetOpacity(v);
+    if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.setOpacity(v);
   }
 
   let languageChanged = false;
@@ -578,10 +613,31 @@ ipcMain.handle('widget:hide', () => {
   hideWidget();
 });
 
+ipcMain.handle('widget:context-menu', () => {
+  showWidgetContextMenu();
+});
+
+// 위치 변경 시마다 크기를 250x40으로 강제 재설정 (Electron 창 크기 왜곡 방지)
+const WIDGET_W = 250, WIDGET_H = 40;
+
+function reaffirmWidgetState() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  try {
+    widgetWindow.setOpacity(storage.getWidgetOpacity());
+    widgetWindow.setAlwaysOnTop(true, 'normal');
+  } catch {}
+}
+
 ipcMain.handle('widget:move', (_event, dx, dy) => {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;
   const [x, y] = widgetWindow.getPosition();
-  widgetWindow.setPosition(Math.round(x + dx), Math.round(y + dy), false);
+  widgetWindow.setBounds({
+    x: Math.round(x + dx),
+    y: Math.round(y + dy),
+    width: WIDGET_W,
+    height: WIDGET_H
+  }, false);
+  reaffirmWidgetState();
 });
 
 ipcMain.handle('widget:drag-start', () => {
@@ -592,5 +648,11 @@ ipcMain.handle('widget:drag-start', () => {
 
 ipcMain.handle('widget:set-position', (_event, x, y) => {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;
-  widgetWindow.setPosition(Math.round(x), Math.round(y), false);
+  widgetWindow.setBounds({
+    x: Math.round(x),
+    y: Math.round(y),
+    width: WIDGET_W,
+    height: WIDGET_H
+  }, false);
+  reaffirmWidgetState();
 });

@@ -1,13 +1,9 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-:root {
-  --widget-alpha: 1;
-}
-
 html, body {
   width: 250px;
   height: 40px;
-  background: transparent;
+  background: #141418;
   overflow: hidden;
   font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
   font-size: 10px;
@@ -18,25 +14,24 @@ html, body {
 .widget {
   width: 250px;
   height: 40px;
-  background: rgba(20, 20, 24, calc(0.85 * var(--widget-alpha)));
-  border-radius: 6px;
+  background: #141418;
   padding: 3px 6px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 2px;
   cursor: move;
-  border: 1px solid rgba(255, 255, 255, calc(0.08 * var(--widget-alpha)));
+  border: 1px solid rgba(255, 255, 255, 0.08);
   position: relative;
 }
 
 .widget:hover {
-  background: rgba(30, 30, 36, calc(0.95 * var(--widget-alpha)));
+  background: #1e1e24;
 }
 
 .widget.auth-expired {
-  background: rgba(80, 20, 24, calc(0.92 * var(--widget-alpha)));
-  border-color: rgba(239, 68, 68, calc(0.7 * var(--widget-alpha)));
+  background: #501418;
+  border-color: rgba(239, 68, 68, 0.7);
   animation: pulse-red 1.6s ease-in-out infinite;
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "claude-state",
   "productName": "claudeState",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Claude usage taskbar widget (i18n, opacity, auto-update)",
   "main": "src/main.js",
   "scripts": {
