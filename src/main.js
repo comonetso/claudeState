@@ -121,7 +121,7 @@ function createWidgetWindow() {
   const workArea = display.workArea;
 
   const saved = storage.getWindowPosition();
-  const W = 250, H = 40;
+  const W = 280, H = 40;
   const defaultX = workArea.x + workArea.width - W - 8;
   const defaultY = workArea.y + workArea.height - H - 8;
 
@@ -144,10 +144,10 @@ function createWidgetWindow() {
   const startHidden = storage.getWidgetVisible() === false;
 
   widgetWindow = new BrowserWindow({
-    width: 250,
+    width: 280,
     height: 40,
-    minWidth: 250,
-    maxWidth: 250,
+    minWidth: 280,
+    maxWidth: 280,
     minHeight: 40,
     maxHeight: 40,
     useContentSize: true,
@@ -191,7 +191,7 @@ function createWidgetWindow() {
   const persistPosition = () => {
     if (!widgetWindow || widgetWindow.isDestroyed()) return;
     const [wx, wy] = widgetWindow.getPosition();
-    const W = 250, H = 40;
+    const W = 280, H = 40;
     const all = screen.getAllDisplays();
     const inAny = all.some((d) => {
       const a = d.workArea;
@@ -353,7 +353,7 @@ function showWidget() {
     setImmediate(() => {
       if (!widgetWindow || widgetWindow.isDestroyed()) return;
       const b = widgetWindow.getBounds();
-      widgetWindow.setBounds({ x: b.x, y: b.y, width: 250, height: 40 }, false);
+      widgetWindow.setBounds({ x: b.x, y: b.y, width: 280, height: 40 }, false);
       widgetWindow.setAlwaysOnTop(false);
       widgetWindow.setAlwaysOnTop(true, 'normal');
       widgetWindow.setOpacity(storage.getWidgetOpacity());
@@ -385,7 +385,7 @@ function resetWidgetPosition() {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;
   const display = screen.getPrimaryDisplay();
   const a = display.workArea;
-  const x = a.x + a.width - 258;
+  const x = a.x + a.width - 288;
   const y = a.y + a.height - 48;
   widgetWindow.setPosition(x, y, false);
   storage.setWindowPosition({ x, y });
@@ -617,8 +617,8 @@ ipcMain.handle('widget:context-menu', () => {
   showWidgetContextMenu();
 });
 
-// 위치 변경 시마다 크기를 250x40으로 강제 재설정 (Electron 창 크기 왜곡 방지)
-const WIDGET_W = 250, WIDGET_H = 40;
+// 위치 변경 시마다 크기를 280x40으로 강제 재설정 (Electron 창 크기 왜곡 방지)
+const WIDGET_W = 280, WIDGET_H = 40;
 
 function reaffirmWidgetState() {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;

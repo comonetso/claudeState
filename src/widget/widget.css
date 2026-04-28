@@ -1,7 +1,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
-  width: 250px;
+  width: 280px;
   height: 40px;
   background: #141418;
   overflow: hidden;
@@ -12,7 +12,7 @@ html, body {
 }
 
 .widget {
-  width: 250px;
+  width: 280px;
   height: 40px;
   background: #141418;
   padding: 3px 6px;
