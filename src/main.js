@@ -8,6 +8,7 @@ const i18n = require('./i18n');
 const { t } = i18n;
 const updater = require('./updater');
 const telegram = require('./telegram');
+const taskbarGuard = require('./taskbarGuard');
 
 app.setAppUserModelId('com.comonetso.claudestate');
 
@@ -115,6 +116,7 @@ let widgetWindow = null;
 let settingsWindow = null;
 let tray = null;
 let fetchTimer = null;
+let reaffirmTimer = null;
 
 function createWidgetWindow() {
   const display = screen.getPrimaryDisplay();
@@ -184,6 +186,7 @@ function createWidgetWindow() {
     try {
       widgetWindow.setOpacity(storage.getWidgetOpacity());
       widgetWindow.setAlwaysOnTop(true, 'normal');
+      widgetWindow.moveTop();
     } catch {}
   });
 
@@ -348,15 +351,15 @@ function showWidget() {
     createWidgetWindow();
   } else {
     widgetWindow.showInactive();
-    // 트레이 이벤트 컨텍스트에서 벗어나 다음 틱에서 z-order 강제 재평가
-    // (작업표시줄 영역 위에 있을 때 show 이후 복원이 씹히는 증상 방지)
+    // show는 우리 프로세스 내부 동작이라(SKIPOWNPROCESS) 이벤트 훅이 발동하지 않는다.
+    // 작업표시줄 영역 위에 있으면 뒤에 깔린 채 안 올라오므로 여기서 직접 최상위로 복원.
     setImmediate(() => {
       if (!widgetWindow || widgetWindow.isDestroyed()) return;
       const b = widgetWindow.getBounds();
       widgetWindow.setBounds({ x: b.x, y: b.y, width: 280, height: 40 }, false);
-      widgetWindow.setAlwaysOnTop(false);
       widgetWindow.setAlwaysOnTop(true, 'normal');
       widgetWindow.setOpacity(storage.getWidgetOpacity());
+      widgetWindow.moveTop();
     });
   }
   rebuildTrayMenu();
@@ -466,6 +469,36 @@ function startFetchLoop() {
   fetchTimer = setInterval(refreshUsage, sec * 1000);
 }
 
+// 표시 중인 위젯을 z-order 최상단으로 1회 끌어올린다 (포커스 미탈취).
+function bringWidgetToTop() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  if (!widgetWindow.isVisible()) return;
+  try {
+    widgetWindow.moveTop();
+  } catch {}
+}
+
+// 정상 경로: 작업표시줄 z-order 이벤트 훅 (src/taskbarGuard.js).
+// 다른 창이 포그라운드가 되는 순간만 감지해 위젯을 복원 → 깜빡임/지연/유휴부하 0.
+// FFI 로드/훅 등록이 실패하는 환경에서만 폴링 폴백으로 내려간다.
+function startTaskbarGuard() {
+  try {
+    taskbarGuard.start(() => bringWidgetToTop());
+    console.log('[claudeState] 작업표시줄 z-order 이벤트 훅 활성화');
+  } catch (e) {
+    console.error(`[claudeState] 이벤트 훅 실패 → 폴링 폴백: ${e.message}`);
+    startPollingFallback();
+  }
+}
+
+// 폴백 전용: 이벤트 훅이 불가능한 환경을 위한 저빈도 재부상 타이머.
+const REAFFIRM_INTERVAL_MS = 1500;
+
+function startPollingFallback() {
+  if (reaffirmTimer) clearInterval(reaffirmTimer);
+  reaffirmTimer = setInterval(bringWidgetToTop, REAFFIRM_INTERVAL_MS);
+}
+
 app.whenReady().then(() => {
   installLogTee();
   i18n.setLanguage(storage.getLanguage());
@@ -473,6 +506,7 @@ app.whenReady().then(() => {
   createWidgetWindow();
   createTray();
   startFetchLoop();
+  startTaskbarGuard();
 
   if (app.isPackaged) {
     updater.setup({
@@ -493,6 +527,8 @@ app.on('window-all-closed', (e) => {
 });
 
 app.on('before-quit', () => {
+  try { taskbarGuard.stop(); } catch {}
+  if (reaffirmTimer) { clearInterval(reaffirmTimer); reaffirmTimer = null; }
   if (widgetWindow && !widgetWindow.isDestroyed()) {
     const [wx, wy] = widgetWindow.getPosition();
     storage.setWindowPosition({ x: wx, y: wy });

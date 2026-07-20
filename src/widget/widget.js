@@ -56,7 +56,7 @@ function resetAtLabel(iso) {
   return `${timePart} (${days[d.getDay()]})`;
 }
 
-function sessionWhenLabel(iso) {
+function whenLabel(iso) {
   const base = resetAtLabel(iso);
   if (base === '--') return '--';
   const until = untilHuman(iso);
@@ -125,8 +125,8 @@ function render(payload) {
     const n = payload.data.normalized;
     setBar(sessionBar, sessionText, n.sessionPercent);
     setBar(weeklyBar, weeklyText, n.weeklyPercent);
-    sessionWhen.textContent = sessionWhenLabel(n.sessionResetAt);
-    weeklyWhen.textContent = resetAtLabel(n.weeklyResetAt);
+    sessionWhen.textContent = whenLabel(n.sessionResetAt);
+    weeklyWhen.textContent = whenLabel(n.weeklyResetAt);
 
     const tooltip = [
       `${t('widget.session')}: ${n.sessionPercent ?? '?'}% — ${resetAtLabel(n.sessionResetAt)} ${t('widget.reset')} (${untilHuman(n.sessionResetAt)})`,
@@ -141,8 +141,8 @@ function render(payload) {
 function tickRecompute() {
   if (lastPayload?.status === 'ok' && lastPayload.data) {
     const n = lastPayload.data.normalized;
-    sessionWhen.textContent = sessionWhenLabel(n.sessionResetAt);
-    weeklyWhen.textContent = resetAtLabel(n.weeklyResetAt);
+    sessionWhen.textContent = whenLabel(n.sessionResetAt);
+    weeklyWhen.textContent = whenLabel(n.weeklyResetAt);
   }
 }
 
