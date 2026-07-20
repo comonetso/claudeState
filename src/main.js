@@ -128,9 +128,10 @@ function createWidgetWindow() {
   const defaultY = workArea.y + workArea.height - H - 8;
 
   const allDisplays = screen.getAllDisplays();
+  // 작업표시줄 위에 겹쳐 둔 위치도 유효로 인정해야 하므로 workArea가 아닌 bounds(전체 화면) 기준.
   const inAnyDisplay = (px, py) =>
     allDisplays.some((d) => {
-      const a = d.workArea;
+      const a = d.bounds;
       return px >= a.x && px + W <= a.x + a.width && py >= a.y && py + H <= a.y + a.height;
     });
 
@@ -162,7 +163,7 @@ function createWidgetWindow() {
     skipTaskbar: true,
     resizable: false,
     hasShadow: false,
-    show: !startHidden,
+    show: false, // 흰 화면 방지: 컨텐츠 로드(did-finish-load) 완료 후 표시
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -186,7 +187,11 @@ function createWidgetWindow() {
     try {
       widgetWindow.setOpacity(storage.getWidgetOpacity());
       widgetWindow.setAlwaysOnTop(true, 'normal');
-      widgetWindow.moveTop();
+      // 컨텐츠가 준비된 뒤 표시 → 최초 실행 흰 화면 방지
+      if (!startHidden) {
+        widgetWindow.showInactive();
+        widgetWindow.moveTop();
+      }
     } catch {}
   });
 
@@ -196,8 +201,9 @@ function createWidgetWindow() {
     const [wx, wy] = widgetWindow.getPosition();
     const W = 280, H = 40;
     const all = screen.getAllDisplays();
+    // bounds 기준 — 작업표시줄 위에 둔 위치도 저장되도록 (workArea면 작업표시줄 겹침이 화면밖 판정됨)
     const inAny = all.some((d) => {
-      const a = d.workArea;
+      const a = d.bounds;
       return wx >= a.x && wx + W <= a.x + a.width && wy >= a.y && wy + H <= a.y + a.height;
     });
     if (!inAny) return;
