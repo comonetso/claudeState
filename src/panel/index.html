@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self';">
+  <title>claudeState detail</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <!--
+    위젯에 마우스를 올렸을 때 뜨는 상세 패널. 네이티브 title 툴팁은 글꼴도 색도
+    바꿀 수 없어서 별도 창으로 옮겼다. 표시할 내용이 없는 공급자는 섹션째 감춘다.
+  -->
+  <div id="panel" class="panel">
+    <section id="sec-claude" class="prov">
+      <header>
+        <img class="logo" src="../../assets/claude.svg" alt="">
+        <span id="claude-name" class="name">클로드</span>
+        <span id="claude-note" class="note"></span>
+      </header>
+
+      <div class="metric">
+        <div class="mtop">
+          <span id="cl-s-label" class="mlabel">5시간 세션</span>
+          <span id="cl-s-pct" class="mpct">--</span>
+        </div>
+        <div class="mbar"><div id="cl-s-fill" class="mfill"></div></div>
+        <div class="mfoot">
+          <span id="cl-s-when" class="mwhen">--</span>
+          <span id="cl-s-at" class="mat"></span>
+        </div>
+      </div>
+
+      <div class="metric">
+        <div class="mtop">
+          <span id="cl-w-label" class="mlabel">주간 세션</span>
+          <span id="cl-w-pct" class="mpct">--</span>
+        </div>
+        <div class="mbar"><div id="cl-w-fill" class="mfill"></div></div>
+        <div class="mfoot">
+          <span id="cl-w-when" class="mwhen">--</span>
+          <span id="cl-w-at" class="mat"></span>
+        </div>
+      </div>
+
+      <div id="cl-models" class="models"></div>
+      <div id="cl-msg" class="msg"></div>
+    </section>
+
+    <div id="sep" class="sep"></div>
+
+    <section id="sec-codex" class="prov">
+      <header>
+        <img class="logo" src="../../assets/codex.svg" alt="">
+        <span id="codex-name" class="name">코덱스</span>
+        <span id="codex-note" class="note"></span>
+      </header>
+
+      <div id="cx-s-metric" class="metric">
+        <div class="mtop">
+          <span id="cx-s-label" class="mlabel">5시간 세션</span>
+          <span id="cx-s-pct" class="mpct">--</span>
+        </div>
+        <div class="mbar"><div id="cx-s-fill" class="mfill"></div></div>
+        <div class="mfoot">
+          <span id="cx-s-when" class="mwhen">--</span>
+          <span id="cx-s-at" class="mat"></span>
+        </div>
+      </div>
+
+      <div id="cx-w-metric" class="metric">
+        <div class="mtop">
+          <span id="cx-w-label" class="mlabel">주간 세션</span>
+          <span id="cx-w-pct" class="mpct">--</span>
+        </div>
+        <div class="mbar"><div id="cx-w-fill" class="mfill"></div></div>
+        <div class="mfoot">
+          <span id="cx-w-when" class="mwhen">--</span>
+          <span id="cx-w-at" class="mat"></span>
+        </div>
+      </div>
+
+      <div id="cx-msg" class="msg"></div>
+    </section>
+  </div>
+  <script src="../shared/format.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

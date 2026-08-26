@@ -1,8 +1,13 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/*
+  크기를 여기에 박지 않는다. 창 크기는 main.js 의 WIDGET_W/WIDGET_H 하나가 정하고
+  문서는 그것을 그대로 따라간다. (Codex 감지 여부에 따라 창 폭이 달라지므로,
+  CSS 에 숫자를 박아 두면 두 곳이 어긋난다.)
+*/
 html, body {
-  width: 280px;
-  height: 40px;
+  width: 100%;
+  height: 100vh;
   background: #141418;
   overflow: hidden;
   font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
@@ -12,8 +17,8 @@ html, body {
 }
 
 .widget {
-  width: 280px;
-  height: 40px;
+  width: 100%;
+  height: 100%;
   background: #141418;
   padding: 3px 6px;
   display: flex;
@@ -51,19 +56,35 @@ html, body {
   width: 100% !important;
 }
 
+/* 쿠키 만료는 Claude 쪽 사정이다. Codex 열까지 빨갛게 물들이지 않는다. */
+.widget.auth-expired .col.codex .pct,
+.widget.auth-expired .col.codex .when {
+  color: #9aa0a6 !important;
+}
+
 @keyframes pulse-red {
   0%, 100% { border-color: rgba(239, 68, 68, 0.7); }
   50% { border-color: rgba(239, 68, 68, 1); }
 }
 
+/*
+  두 공급자 칸은 반드시 같은 폭이어야 세로줄이 맞는다. 1fr 두 개면 콘텐츠 길이와
+  무관하게 균등 분배되고, minmax(0,·) 가 긴 텍스트의 칸 밀어내기를 막는다.
+  (getBoundingClientRect 실측: 양쪽 149px 동일)
+*/
 .row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
   align-items: center;
   gap: 5px;
   height: 15px;
   font-size: 11px;
   line-height: 15px;
   color: #e5e7eb;
+}
+
+.widget.has-codex .row {
+  grid-template-columns: 14px minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .label {
@@ -77,6 +98,36 @@ html, body {
   flex-shrink: 0;
   font-family: 'Consolas', 'Courier New', monospace;
 }
+
+/* 한 행 안의 공급자 한 칸. 폭 배분은 .row 의 grid 가 정한다. */
+.col {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Codex 미감지가 기본값 — 열 자체를 그리지 않아 기존 모습이 그대로 유지된다. */
+.col.codex { display: none; }
+
+.widget.has-codex .col.codex {
+  display: flex;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  padding-left: 6px;
+}
+
+.ico {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  display: none;
+}
+
+/* 아이콘은 두 열을 구분해야 할 때만 필요하다. 한 열뿐이면 폭 낭비다. */
+.widget.has-codex .ico { display: block; }
+
+/* 두 열 모드에서는 바를 걷어내고 그 폭을 잔여시간 텍스트에 넘긴다. */
+.widget.has-codex .bar { display: none; }
 
 .bar {
   width: 50px;
@@ -110,6 +161,10 @@ html, body {
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
+
+/* 바가 없으면 색으로만 위험도를 알린다. */
+.widget.has-codex .pct.warn { color: #fbbf24; }
+.widget.has-codex .pct.danger { color: #ef4444; }
 
 .when {
   font-size: 11px;

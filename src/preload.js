@@ -11,10 +11,14 @@ contextBridge.exposeInMainWorld('claudeState', {
   moveWidget: (dx, dy) => ipcRenderer.invoke('widget:move', dx, dy),
   widgetDragStart: () => ipcRenderer.invoke('widget:drag-start'),
   setWidgetPosition: (x, y) => ipcRenderer.invoke('widget:set-position', x, y),
+  showPanel: () => ipcRenderer.invoke('panel:show'),
+  hidePanel: () => ipcRenderer.invoke('panel:hide'),
+  resizePanel: (height) => ipcRenderer.invoke('panel:resize', height),
   getI18n: () => ipcRenderer.invoke('i18n:get'),
   getTelegram: () => ipcRenderer.invoke('telegram:get'),
   telegramLink: (token) => ipcRenderer.invoke('telegram:link', token),
   telegramTest: () => ipcRenderer.invoke('telegram:test'),
+  telegramSetNotify: (enabled) => ipcRenderer.invoke('telegram:set-notify', enabled),
   onI18nChanged: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('i18n:changed', listener);

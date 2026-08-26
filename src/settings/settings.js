@@ -3,6 +3,7 @@ const telegramTokenInput = document.getElementById('telegramToken');
 const telegramStatusEl = document.getElementById('telegram-status');
 const telegramLinkBtn = document.getElementById('telegram-link-btn');
 const telegramTestBtn = document.getElementById('telegram-test-btn');
+const telegramNotifyInput = document.getElementById('telegramNotifyOnReset');
 const cookieInput = document.getElementById('sessionCookie');
 const intervalInput = document.getElementById('refreshInterval');
 const autoLaunchInput = document.getElementById('autoLaunch');
@@ -67,6 +68,7 @@ async function load() {
 
   const tg = await window.claudeState.getTelegram();
   if (tg.botToken) telegramTokenInput.value = tg.botToken;
+  telegramNotifyInput.checked = tg.notifyOnReset !== false;
   setTelegramLinkedState(tg.chatId ? tg.chatId : null);
 }
 
@@ -173,6 +175,20 @@ telegramTestBtn.addEventListener('click', async () => {
   const r = await window.claudeState.telegramTest();
   telegramTestBtn.disabled = false;
   setStatus(r.ok ? t('settings.telegramTestSent') : t('settings.telegramTestFail'), r.ok ? 'ok' : 'err');
+});
+
+// 언어·투명도와 같이 즉시 저장한다. 위쪽 저장 버튼은 다른 섹션 소관이라
+// 여기서 눌러야 하는 것으로 오해되면 안 된다.
+telegramNotifyInput.addEventListener('change', async () => {
+  try {
+    await window.claudeState.telegramSetNotify(telegramNotifyInput.checked);
+    setStatus(
+      telegramNotifyInput.checked ? t('settings.telegramNotifyOn') : t('settings.telegramNotifyOff'),
+      'ok'
+    );
+  } catch (e) {
+    setStatus(t('settings.msg.saveFailed', e.message), 'err');
+  }
 });
 
 window.claudeState.onI18nChanged((payload) => {

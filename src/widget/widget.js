@@ -1,94 +1,102 @@
+const F = window.csFormat;
+
 const sessionBar = document.getElementById('session-bar');
 const weeklyBar = document.getElementById('weekly-bar');
 const sessionText = document.getElementById('session-text');
 const weeklyText = document.getElementById('weekly-text');
 const sessionWhen = document.getElementById('session-when');
 const weeklyWhen = document.getElementById('weekly-when');
+const cxSessionText = document.getElementById('cx-session-text');
+const cxWeeklyText = document.getElementById('cx-weekly-text');
+const cxSessionWhen = document.getElementById('cx-session-when');
+const cxWeeklyWhen = document.getElementById('cx-weekly-when');
 const statusEl = document.getElementById('status');
 const widget = document.getElementById('widget');
 
 let lastPayload = null;
-let dict = {};
 
-function t(key, ...args) {
-  let v = dict[key];
-  if (v == null) return key;
-  if (typeof v === 'string' && args.length) {
-    v = v.replace(/\{(\d+)\}/g, (_, i) => {
-      const val = args[Number(i)];
-      return val == null ? '' : String(val);
-    });
+// Codex 열이 붙어 있는가. 붙어 있으면 폭이 빠듯하므로 리셋 "시각"을 빼고
+// 잔여시간만 남긴다. 정확한 시각은 상세 패널이 갖는다.
+let codexMode = false;
+
+// 퍼센트 텍스트만 갱신하고 정규화된 값을 돌려준다(값이 없으면 null).
+// Codex 열에는 바가 없어서 위험도를 글자색으로만 알린다.
+function setPct(textEl, percent) {
+  textEl.classList.remove('warn', 'danger');
+  const p = F.pct(percent);
+  if (p == null) {
+    textEl.textContent = '--';
+    return null;
   }
-  return v;
+  textEl.textContent = `${p}%`;
+  const lv = F.levelOf(p);
+  if (lv) textEl.classList.add(lv);
+  return p;
 }
 
 function setBar(barEl, textEl, percent) {
-  if (percent == null || Number.isNaN(percent)) {
+  const p = setPct(textEl, percent);
+  barEl.classList.remove('warn', 'danger');
+  if (p == null) {
     barEl.style.width = '0%';
-    textEl.textContent = '--';
-    barEl.classList.remove('warn', 'danger');
     return;
   }
-  const p = Math.max(0, Math.min(100, Math.round(percent)));
   barEl.style.width = `${p}%`;
-  textEl.textContent = `${p}%`;
-  barEl.classList.remove('warn', 'danger');
-  if (p >= 90) barEl.classList.add('danger');
-  else if (p >= 70) barEl.classList.add('warn');
-}
-
-function resetAtLabel(iso) {
-  if (!iso) return '--';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '--';
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const h = d.getHours();
-  const ap = h < 12 ? t('widget.am') : t('widget.pm');
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const timePart = `${ap} ${h12}:${mm}`;
-  if (sameDay) return timePart;
-  const days = dict['widget.weekdays'] || ['일', '월', '화', '수', '목', '금', '토'];
-  return `${timePart} (${days[d.getDay()]})`;
+  const lv = F.levelOf(p);
+  if (lv) barEl.classList.add(lv);
 }
 
 function whenLabel(iso) {
-  const base = resetAtLabel(iso);
+  const base = F.resetAtLabel(iso);
   if (base === '--') return '--';
-  const until = untilHuman(iso);
+  const until = F.untilHuman(iso);
   if (until === '--') return base;
   return `${base} (${until})`;
 }
 
-function untilHuman(iso) {
-  if (!iso) return '--';
-  const diff = new Date(iso).getTime() - Date.now();
-  if (!Number.isFinite(diff) || diff <= 0) return t('widget.resetsSoon');
-  const mins = Math.floor(diff / 60000);
-  const days = Math.floor(mins / 1440);
-  const hours = Math.floor((mins % 1440) / 60);
-  const m = mins % 60;
-  if (days >= 1) return t('widget.daysLater', days, hours);
-  if (hours >= 1) return t('widget.hoursLater', hours, m);
-  return t('widget.minsLater', m);
+// 두 열 모드에서는 폭이 없어 잔여시간만 쓴다. 한 열이면 지금까지처럼 시각도 함께 보인다.
+function whenText(iso) {
+  return codexMode ? F.untilHuman(iso) : whenLabel(iso);
+}
+
+// Codex 열. Claude 쪽 status 와 독립적으로 그린다 — claude.ai 쿠키가 만료돼도
+// Codex 사용량은 멀쩡하므로 같이 죽이면 안 된다.
+function renderCodex(payload) {
+  const enabled = payload?.codexEnabled === true;
+  codexMode = enabled;
+  widget.classList.toggle('has-codex', enabled);
+  if (!enabled) return;
+
+  const cx = payload.codex;
+  if (!cx) {
+    // 감지는 됐는데 이번 조회가 실패한 상태. 열을 접었다 폈다 하면 위젯 폭이
+    // 요동치므로 자리는 지키고 값만 비운다.
+    setPct(cxSessionText, null);
+    setPct(cxWeeklyText, null);
+    cxSessionWhen.textContent = '--';
+    cxWeeklyWhen.textContent = '--';
+    return;
+  }
+
+  // 5시간 한도가 없는 계정(주간 전용)은 S행에 넣을 값 자체가 없다.
+  setPct(cxSessionText, cx.hasFiveHour ? cx.sessionPercent : null);
+  cxSessionWhen.textContent = cx.hasFiveHour ? whenText(cx.sessionResetAt) : '--';
+  setPct(cxWeeklyText, cx.weeklyPercent);
+  cxWeeklyWhen.textContent = whenText(cx.weeklyResetAt);
 }
 
 function render(payload) {
   lastPayload = payload;
+  renderCodex(payload);
   widget.classList.remove('auth-expired');
 
   if (payload.status === 'unconfigured') {
-    statusEl.textContent = t('widget.status.unconfigured');
+    statusEl.textContent = F.t('widget.status.unconfigured');
     statusEl.className = 'status error';
     setBar(sessionBar, sessionText, null);
     setBar(weeklyBar, weeklyText, null);
-    sessionWhen.textContent = t('widget.status.needCookie');
-    weeklyWhen.textContent = t('widget.status.rightClickSettings');
-    widget.title = t('widget.tooltip.needSettings');
+    sessionWhen.textContent = F.t('widget.status.needCookie');
+    weeklyWhen.textContent = F.t('widget.status.rightClickSettings');
     return;
   }
 
@@ -98,9 +106,8 @@ function render(payload) {
     statusEl.className = 'status error';
     sessionText.textContent = '!!';
     weeklyText.textContent = '!!';
-    sessionWhen.textContent = t('widget.status.cookieExpired');
-    weeklyWhen.textContent = t('widget.status.rightClickRefresh');
-    widget.title = t('widget.tooltip.authExpired', payload.message);
+    sessionWhen.textContent = F.t('widget.status.cookieExpired');
+    weeklyWhen.textContent = F.t('widget.status.rightClickRefresh');
     return;
   }
 
@@ -111,11 +118,10 @@ function render(payload) {
   }
 
   if (payload.status === 'error') {
-    statusEl.textContent = t('widget.status.error');
+    statusEl.textContent = F.t('widget.status.error');
     statusEl.className = 'status error';
     sessionWhen.textContent = '-';
     weeklyWhen.textContent = '-';
-    widget.title = t('widget.tooltip.error', payload.message);
     return;
   }
 
@@ -125,24 +131,22 @@ function render(payload) {
     const n = payload.data.normalized;
     setBar(sessionBar, sessionText, n.sessionPercent);
     setBar(weeklyBar, weeklyText, n.weeklyPercent);
-    sessionWhen.textContent = whenLabel(n.sessionResetAt);
-    weeklyWhen.textContent = whenLabel(n.weeklyResetAt);
-
-    const tooltip = [
-      `${t('widget.session')}: ${n.sessionPercent ?? '?'}% — ${resetAtLabel(n.sessionResetAt)} ${t('widget.reset')} (${untilHuman(n.sessionResetAt)})`,
-      `${t('widget.weeklyAll')}: ${n.weeklyPercent ?? '?'}% — ${resetAtLabel(n.weeklyResetAt)} ${t('widget.reset')} (${untilHuman(n.weeklyResetAt)})`,
-      n.sonnetPercent != null ? `Sonnet: ${n.sonnetPercent}% — ${resetAtLabel(n.sonnetResetAt)}` : null,
-      n.opusPercent != null ? `Opus: ${n.opusPercent}% — ${resetAtLabel(n.opusResetAt)}` : null
-    ].filter(Boolean).join('\n');
-    widget.title = tooltip;
+    sessionWhen.textContent = whenText(n.sessionResetAt);
+    weeklyWhen.textContent = whenText(n.weeklyResetAt);
   }
 }
 
+// 재조회 없이 "남은 시간"만 다시 계산한다. 두 공급자 모두 대상이다.
 function tickRecompute() {
   if (lastPayload?.status === 'ok' && lastPayload.data) {
     const n = lastPayload.data.normalized;
-    sessionWhen.textContent = whenLabel(n.sessionResetAt);
-    weeklyWhen.textContent = whenLabel(n.weeklyResetAt);
+    sessionWhen.textContent = whenText(n.sessionResetAt);
+    weeklyWhen.textContent = whenText(n.weeklyResetAt);
+  }
+  const cx = lastPayload?.codex;
+  if (lastPayload?.codexEnabled && cx) {
+    if (cx.hasFiveHour) cxSessionWhen.textContent = whenText(cx.sessionResetAt);
+    cxWeeklyWhen.textContent = whenText(cx.weeklyResetAt);
   }
 }
 
@@ -151,13 +155,14 @@ setInterval(tickRecompute, 60 * 1000);
 (async () => {
   try {
     const i = await window.claudeState.getI18n();
-    dict = i.dict || {};
+    F.setDict(i.dict || {});
     document.documentElement.lang = i.language;
   } catch {}
+  if (lastPayload) render(lastPayload);
 })();
 
 window.claudeState.onI18nChanged((payload) => {
-  dict = payload.dict || {};
+  F.setDict(payload.dict || {});
   document.documentElement.lang = payload.language;
   if (lastPayload) render(lastPayload);
 });
@@ -166,6 +171,7 @@ window.claudeState.onUsageUpdate(render);
 
 widget.addEventListener('contextmenu', (e) => {
   e.preventDefault();
+  window.claudeState.hidePanel();
   window.claudeState.showWidgetContextMenu();
 });
 
@@ -178,6 +184,18 @@ let dragOffset = null;
 let pendingPos = null;
 let rafHandle = 0;
 
+// --- 상세 패널 ---
+// 네이티브 title 툴팁은 글꼴도 색도 못 바꾸므로 별도 창으로 띄운다.
+// 드래그 중에는 따라다니면 거슬리므로 숨긴다.
+widget.addEventListener('mouseenter', () => {
+  if (dragging) return;
+  window.claudeState.showPanel();
+});
+
+widget.addEventListener('mouseleave', () => {
+  window.claudeState.hidePanel();
+});
+
 function flushMove() {
   rafHandle = 0;
   if (!dragging || !pendingPos) return;
@@ -188,6 +206,7 @@ function flushMove() {
 
 widget.addEventListener('pointerdown', async (e) => {
   if (e.button !== 0) return;
+  window.claudeState.hidePanel();
   const origin = await window.claudeState.widgetDragStart();
   if (!origin) return;
   dragging = true;

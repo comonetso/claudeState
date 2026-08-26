@@ -1,0 +1,167 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/*
+  창 자체는 transparent:false 다 — v0.3.2 에서 DWM 이중 투명도로 위젯이 불안정했던
+  전례가 있어 같은 길을 가지 않는다. 둥근 모서리 대신 또렷한 테두리로 형태를 잡는다.
+*/
+html, body {
+  width: 100%;
+  background: #16161b;
+  overflow: hidden;
+  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+  user-select: none;
+  cursor: default;
+}
+
+.panel {
+  width: 100%;
+  background: #16161b;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.prov {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prov.hidden { display: none; }
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.logo {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f3f4f6;
+  letter-spacing: 0.2px;
+}
+
+/* 플랜명처럼 부차적인 정보. 이름과 같은 줄에 두되 눈에 덜 띄게. */
+.note {
+  font-size: 10px;
+  color: #8b9099;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.note:empty { display: none; }
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.metric.hidden { display: none; }
+
+.mtop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.mlabel {
+  font-size: 11px;
+  color: #b6bcc6;
+}
+
+.mpct {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e8eaed;
+  font-variant-numeric: tabular-nums;
+}
+
+.mpct.warn { color: #fbbf24; }
+.mpct.danger { color: #ef4444; }
+
+.mbar {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mfill {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: #4a9eff;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.mfill.weekly { background: #4ade80; }
+.mfill.warn { background: #fbbf24; }
+.mfill.danger { background: #ef4444; }
+
+.mfoot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 남은 시간이 주인공이다 — 먼저 읽혀야 한다. */
+.mwhen {
+  font-size: 11px;
+  color: #d2d6dd;
+  white-space: nowrap;
+}
+
+/* 정확한 리셋 시각은 확인용이므로 한 단계 물러난다. */
+.mat {
+  font-size: 10px;
+  color: #7f858e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.models {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.models:empty { display: none; }
+
+.model-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #8b9099;
+}
+
+.sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sep.hidden { display: none; }
+
+/* 오류·미설정 안내. 값이 없을 때만 채워진다. */
+.msg {
+  font-size: 10.5px;
+  color: #9aa0a6;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.msg:empty { display: none; }
+
+.msg.error { color: #f87171; }

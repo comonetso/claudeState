@@ -110,6 +110,21 @@ function setTelegramChatId(chatId) {
   writeJSON(STATE_FILE(), state);
 }
 
+// 리셋 텔레그램 알림을 보낼 것인가.
+// 기본 ON — 이 앱만 쓰는 사용자에게는 필요한 기능이다. VS Code 확장(claudeStateBar)이
+// 같은 알림을 보내므로, 둘 다 쓰는 사용자만 끄면 된다.
+function getTelegramNotifyOnReset() {
+  const v = readJSON(STATE_FILE())?.telegramNotifyOnReset;
+  return typeof v === 'boolean' ? v : true;
+}
+
+function setTelegramNotifyOnReset(enabled) {
+  const state = readJSON(STATE_FILE()) ?? {};
+  state.telegramNotifyOnReset = Boolean(enabled);
+  writeJSON(STATE_FILE(), state);
+  return state.telegramNotifyOnReset;
+}
+
 function getLastSessionResetAt() {
   const v = readJSON(STATE_FILE())?.lastSessionResetAt;
   return typeof v === 'string' && v ? v : null;
@@ -163,6 +178,8 @@ module.exports = {
   setTelegramBotToken,
   getTelegramChatId,
   setTelegramChatId,
+  getTelegramNotifyOnReset,
+  setTelegramNotifyOnReset,
   getLastSessionResetAt,
   setLastSessionResetAt
 };

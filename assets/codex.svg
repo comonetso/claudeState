@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Codex 육각 링. OpenAI 로고의 매듭은 14px 에서 뭉개지므로 실루엣만 남겼다. -->
+  <path fill="none" stroke="#10A37F" stroke-width="2.4" stroke-linejoin="round"
+        d="M12 2.2 20.2 6.9v10.2L12 21.8 3.8 17.1V6.9z"/>
+</svg>

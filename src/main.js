@@ -4,6 +4,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const storage = require('./storage');
 const api = require('./api');
+const codex = require('./codex');
 const i18n = require('./i18n');
 const { t } = i18n;
 const updater = require('./updater');
@@ -105,6 +106,43 @@ const TRAY_ICON_CANDIDATES = [
 const MIN_INTERVAL_SEC = 10;
 const MAX_INTERVAL_SEC = 3600;
 
+// ---------------------------------------------------------------------------
+// 위젯 크기 — 반드시 이 한 곳에서만 정한다.
+//
+// 예전에는 창 생성·위치 저장·표시 복원·위치 초기화·IPC 이동에 280/40 이 각각 박혀 있어
+// 크기를 바꾸려면 일곱 군데를 따라다녀야 했다. Codex 열이 붙으면 폭이 달라지므로
+// 그 구조로는 어긋나는 곳이 반드시 생긴다. CSS 도 숫자를 버리고 100%/100vh 로 따라온다.
+// ---------------------------------------------------------------------------
+const WIDGET_H = 40;
+const WIDGET_W_BASE = 280;   // Claude 만 표시
+// 두 열 모드. 한 칸이 137px 이 되어 아이콘11 + 퍼센트30 + 잔여시간이 들어간다.
+// 실측으로 최장 문구("2일 18시간 후")까지 잘리지 않는 하한이다.
+const WIDGET_W_CODEX = 310;
+
+// 상세 패널 — 위젯에 마우스를 올리면 뜨는 별도 창.
+// 네이티브 title 툴팁은 글꼴·색·여백을 하나도 손댈 수 없어 창으로 옮겼다.
+const PANEL_W = 300;
+const PANEL_GAP = 6;
+// 렌더러가 내용 높이를 재서 알려주기 전까지 쓰는 임시값.
+let panelHeight = 210;
+
+// 이 PC 에 codex CLI 가 있는가. 설정 토글이 아니라 자동 감지 결과다.
+let codexEnabled = false;
+
+function widgetW() {
+  return codexEnabled ? WIDGET_W_CODEX : WIDGET_W_BASE;
+}
+
+// 이 좌표가 어느 한 모니터 안에 들어가는가.
+// 작업표시줄 위에 겹쳐 둔 위치도 유효로 인정해야 하므로 workArea 가 아닌 bounds 기준이다.
+// workArea 로 되돌리면 작업표시줄 겹침 위치가 "화면 밖"으로 판정돼 위치 기억이 깨진다(v0.3.6).
+function fitsAnyDisplay(px, py, w = widgetW(), h = WIDGET_H) {
+  return screen.getAllDisplays().some((d) => {
+    const a = d.bounds;
+    return px >= a.x && px + w <= a.x + a.width && py >= a.y && py + h <= a.y + a.height;
+  });
+}
+
 function findTrayIcon() {
   for (const p of TRAY_ICON_CANDIDATES) {
     if (fs.existsSync(p)) return p;
@@ -114,6 +152,10 @@ function findTrayIcon() {
 
 let widgetWindow = null;
 let settingsWindow = null;
+let panelWindow = null;
+let panelVisible = false;
+// 마지막으로 브로드캐스트한 usage payload. 늦게 로드된 창에 다시 보내준다.
+let lastUsagePayload = null;
 let tray = null;
 let fetchTimer = null;
 let reaffirmTimer = null;
@@ -123,21 +165,13 @@ function createWidgetWindow() {
   const workArea = display.workArea;
 
   const saved = storage.getWindowPosition();
-  const W = 280, H = 40;
+  const W = widgetW();
   const defaultX = workArea.x + workArea.width - W - 8;
-  const defaultY = workArea.y + workArea.height - H - 8;
-
-  const allDisplays = screen.getAllDisplays();
-  // 작업표시줄 위에 겹쳐 둔 위치도 유효로 인정해야 하므로 workArea가 아닌 bounds(전체 화면) 기준.
-  const inAnyDisplay = (px, py) =>
-    allDisplays.some((d) => {
-      const a = d.bounds;
-      return px >= a.x && px + W <= a.x + a.width && py >= a.y && py + H <= a.y + a.height;
-    });
+  const defaultY = workArea.y + workArea.height - WIDGET_H - 8;
 
   let x = defaultX;
   let y = defaultY;
-  if (saved && inAnyDisplay(saved.x, saved.y)) {
+  if (saved && fitsAnyDisplay(saved.x, saved.y)) {
     x = saved.x;
     y = saved.y;
   } else if (saved) {
@@ -147,12 +181,12 @@ function createWidgetWindow() {
   const startHidden = storage.getWidgetVisible() === false;
 
   widgetWindow = new BrowserWindow({
-    width: 280,
-    height: 40,
-    minWidth: 280,
-    maxWidth: 280,
-    minHeight: 40,
-    maxHeight: 40,
+    width: W,
+    height: WIDGET_H,
+    minWidth: W,
+    maxWidth: W,
+    minHeight: WIDGET_H,
+    maxHeight: WIDGET_H,
     useContentSize: true,
     x,
     y,
@@ -193,20 +227,17 @@ function createWidgetWindow() {
         widgetWindow.moveTop();
       }
     } catch {}
+    // 로드 전에 지나간 갱신이 있으면 다시 보낸다.
+    if (lastUsagePayload && widgetWindow && !widgetWindow.isDestroyed()) {
+      widgetWindow.webContents.send('usage:update', lastUsagePayload);
+    }
   });
 
   let savePosTimer = null;
   const persistPosition = () => {
     if (!widgetWindow || widgetWindow.isDestroyed()) return;
     const [wx, wy] = widgetWindow.getPosition();
-    const W = 280, H = 40;
-    const all = screen.getAllDisplays();
-    // bounds 기준 — 작업표시줄 위에 둔 위치도 저장되도록 (workArea면 작업표시줄 겹침이 화면밖 판정됨)
-    const inAny = all.some((d) => {
-      const a = d.bounds;
-      return wx >= a.x && wx + W <= a.x + a.width && wy >= a.y && wy + H <= a.y + a.height;
-    });
-    if (!inAny) return;
+    if (!fitsAnyDisplay(wx, wy)) return;
     storage.setWindowPosition({ x: wx, y: wy });
   };
 
@@ -227,6 +258,98 @@ function createWidgetWindow() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 상세 패널
+//
+// 앱 시작 시 미리 만들어 두고 숨겨만 둔다. 그래야 usage:update 브로드캐스트를 처음부터
+// 받아 두어서, 마우스를 올린 순간 이미 그려진 내용이 나온다.
+// ---------------------------------------------------------------------------
+function createPanelWindow() {
+  panelWindow = new BrowserWindow({
+    width: PANEL_W,
+    height: panelHeight,
+    useContentSize: true,
+    frame: false,
+    // transparent 는 쓰지 않는다 — v0.3.2 에서 DWM 이중 투명도로 위젯이 불안정했다.
+    transparent: false,
+    backgroundColor: '#16161b',
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: true,
+    // 마우스를 올렸을 뿐인데 작업 중이던 창의 포커스를 뺏으면 안 된다.
+    focusable: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      // 숨어 있는 동안에도 갱신을 받아 둬야 마우스를 올린 순간 이미 그려져 있다.
+      backgroundThrottling: false
+    }
+  });
+
+  panelWindow.setAlwaysOnTop(true, 'normal');
+  panelWindow.loadFile(path.join(__dirname, 'panel', 'index.html'));
+
+  // 로드가 끝나기 전에 지나간 브로드캐스트를 놓치지 않도록 마지막 값을 다시 보낸다.
+  panelWindow.webContents.on('did-finish-load', () => {
+    if (lastUsagePayload && panelWindow && !panelWindow.isDestroyed()) {
+      panelWindow.webContents.send('usage:update', lastUsagePayload);
+    }
+  });
+
+  panelWindow.on('closed', () => {
+    panelWindow = null;
+    panelVisible = false;
+  });
+}
+
+// 위젯을 기준으로 패널을 놓는다. 기본은 위쪽 — 위젯이 보통 화면 아래에 붙어 있기 때문이다.
+function positionPanel() {
+  if (!panelWindow || panelWindow.isDestroyed()) return;
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+
+  const wb = widgetWindow.getBounds();
+  const area = screen.getDisplayNearestPoint({
+    x: wb.x + Math.floor(wb.width / 2),
+    y: wb.y
+  }).workArea;
+
+  // 위 공간이 모자라면 아래로 뒤집고, 그래도 안 되면 화면 안으로 밀어 넣는다.
+  let y = wb.y - panelHeight - PANEL_GAP;
+  if (y < area.y) y = wb.y + wb.height + PANEL_GAP;
+  if (y + panelHeight > area.y + area.height) {
+    y = Math.max(area.y, area.y + area.height - panelHeight);
+  }
+
+  // 위젯 오른쪽 끝에 맞춘다. 위젯이 대개 우하단에 있어 이쪽이 자연스럽다.
+  let x = wb.x + wb.width - PANEL_W;
+  x = Math.max(area.x, Math.min(x, area.x + area.width - PANEL_W));
+
+  panelWindow.setBounds({ x, y, width: PANEL_W, height: panelHeight }, false);
+}
+
+function showPanel() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  if (!storage.getWidgetVisible()) return;
+  if (!panelWindow || panelWindow.isDestroyed()) createPanelWindow();
+  panelVisible = true;
+  positionPanel();
+  try {
+    panelWindow.showInactive();
+    panelWindow.setAlwaysOnTop(true, 'normal');
+    panelWindow.moveTop();
+  } catch (e) {
+    console.warn(`[claudeState] 패널 표시 실패: ${e.message}`);
+  }
+}
+
+function hidePanel() {
+  panelVisible = false;
+  if (panelWindow && !panelWindow.isDestroyed()) panelWindow.hide();
+}
+
 function createSettingsWindow() {
   if (settingsWindow) {
     settingsWindow.focus();
@@ -235,7 +358,8 @@ function createSettingsWindow() {
 
   settingsWindow = new BrowserWindow({
     width: 480,
-    height: 660,
+    // 리셋 알림 토글이 스크롤 아래로 숨지 않도록 720 (v0.4.1)
+    height: 720,
     title: t('settings.title'),
     resizable: false,
     minimizable: false,
@@ -351,6 +475,31 @@ async function triggerManualUpdateCheck() {
   }
 }
 
+// 현재 폭/높이를 창에 반영한다. Codex 감지 상태가 바뀌면 폭이 달라지므로
+// 최소·최대 크기까지 함께 갱신해야 한다(고정해 두면 setBounds 가 먹지 않는다).
+function applyWidgetSize() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  const w = widgetW();
+  try {
+    let [x, y] = widgetWindow.getPosition();
+
+    // 위젯은 보통 화면 우하단에 붙어 있다. Codex 열이 붙어 폭이 늘면 그만큼
+    // 오른쪽이 잘리므로, 화면 밖으로 나가는 경우에만 안쪽으로 당긴다.
+    if (!fitsAnyDisplay(x, y, w, WIDGET_H)) {
+      const a = screen.getDisplayNearestPoint({ x, y }).bounds;
+      x = Math.max(a.x, Math.min(x, a.x + a.width - w));
+      y = Math.max(a.y, Math.min(y, a.y + a.height - WIDGET_H));
+    }
+
+    widgetWindow.setMinimumSize(w, WIDGET_H);
+    widgetWindow.setMaximumSize(w, WIDGET_H);
+    widgetWindow.setBounds({ x, y, width: w, height: WIDGET_H }, false);
+    storage.setWindowPosition({ x, y });
+  } catch (e) {
+    console.warn(`[claudeState] 위젯 크기 적용 실패: ${e.message}`);
+  }
+}
+
 function showWidget() {
   storage.setWidgetVisible(true);
   if (!widgetWindow || widgetWindow.isDestroyed()) {
@@ -361,8 +510,7 @@ function showWidget() {
     // 작업표시줄 영역 위에 있으면 뒤에 깔린 채 안 올라오므로 여기서 직접 최상위로 복원.
     setImmediate(() => {
       if (!widgetWindow || widgetWindow.isDestroyed()) return;
-      const b = widgetWindow.getBounds();
-      widgetWindow.setBounds({ x: b.x, y: b.y, width: 280, height: 40 }, false);
+      applyWidgetSize();
       widgetWindow.setAlwaysOnTop(true, 'normal');
       widgetWindow.setOpacity(storage.getWidgetOpacity());
       widgetWindow.moveTop();
@@ -373,6 +521,8 @@ function showWidget() {
 
 function hideWidget() {
   storage.setWidgetVisible(false);
+  // 위젯이 사라졌는데 패널만 남아 떠 있으면 유령처럼 보인다.
+  hidePanel();
   if (widgetWindow && !widgetWindow.isDestroyed()) {
     widgetWindow.hide();
   }
@@ -394,25 +544,88 @@ function resetWidgetPosition() {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;
   const display = screen.getPrimaryDisplay();
   const a = display.workArea;
-  const x = a.x + a.width - 288;
-  const y = a.y + a.height - 48;
+  // 우하단에서 8px 띄운다.
+  const x = a.x + a.width - widgetW() - 8;
+  const y = a.y + a.height - WIDGET_H - 8;
   widgetWindow.setPosition(x, y, false);
   storage.setWindowPosition({ x, y });
 }
 
+// ---------------------------------------------------------------------------
+// Codex 사용량
+//
+// Claude 자격증명과 무관하다. 쿠키가 없거나 만료돼도 Codex 표시는 살아 있어야 한다.
+// ---------------------------------------------------------------------------
+let lastCodexUsage = null;
+let codexLastProbeAt = 0;
+
+// app-server 는 조회할 때마다 자식 프로세스를 띄우므로 Claude 의 HTTP 조회보다 비싸다.
+// 새로고침 간격을 10초로 낮춰 두더라도 Codex 만은 이 아래로 내려가지 않는다.
+const CODEX_MIN_INTERVAL_MS = 60 * 1000;
+
+// codex 설치 여부를 다시 확인한다. 매 갱신마다 보므로, 앱을 켜 둔 채 codex 를
+// 새로 설치해도 재시작 없이 열이 붙는다.
+async function refreshCodexDetection() {
+  const found = await codex.detect();
+  const next = Boolean(found);
+  if (next === codexEnabled) return;
+  codexEnabled = next;
+  console.log(`[claudeState] Codex ${next ? `감지: ${found}` : '미감지 — 열 숨김'}`);
+  applyWidgetSize();
+}
+
+// 절대 reject 하지 않는다. Codex 조회 실패가 Claude 표시를 막으면 안 된다.
+async function refreshCodexUsage() {
+  if (!codexEnabled) {
+    lastCodexUsage = null;
+    return;
+  }
+  if (Date.now() - codexLastProbeAt < CODEX_MIN_INTERVAL_MS) return;
+  codexLastProbeAt = Date.now();
+  try {
+    const n = await codex.fetchRateLimits();
+    // 실패하면 직전 값을 유지한다. 언제 관측한 값인지는 툴팁에 남는다.
+    if (n) lastCodexUsage = n;
+  } catch (e) {
+    console.warn(`[claudeState] Codex 조회 예외: ${e.message}`);
+  }
+}
+
+// 모든 usage 브로드캐스트는 이걸 거친다 — Codex 상태를 빠뜨리는 경로가 없도록.
+// 마지막 값을 남겨 두는 것은, 창이 로드되기 전에 지나간 갱신을 뒤늦게 복원하기 위해서다.
+function broadcastUsage(payload) {
+  lastUsagePayload = { ...payload, codexEnabled, codex: lastCodexUsage };
+  broadcast('usage:update', lastUsagePayload);
+}
+
+function codexLogSuffix() {
+  if (!codexEnabled || !lastCodexUsage) return '';
+  const u = lastCodexUsage;
+  const s = u.hasFiveHour ? `${u.sessionPercent ?? '?'}%` : '없음';
+  return ` | Codex 세션 ${s} / 주간 ${u.weeklyPercent ?? '?'}%`;
+}
+
 async function refreshUsage() {
+  await refreshCodexDetection();
+
   const creds = storage.getCredentials();
   if (!creds?.sessionCookie || !creds?.orgId) {
-    broadcast('usage:update', { status: 'unconfigured' });
+    // 쿠키가 없어도 Codex 는 보여줄 수 있다.
+    await refreshCodexUsage();
+    broadcastUsage({ status: 'unconfigured' });
     return;
   }
 
-  broadcast('usage:update', { status: 'loading' });
+  broadcastUsage({ status: 'loading' });
+
+  // 서로 독립된 조회라 나란히 돌린다. codexTask 는 위 정의상 reject 하지 않는다.
+  const codexTask = refreshCodexUsage();
 
   try {
     const data = await api.fetchUsage(creds.sessionCookie, creds.orgId);
+    await codexTask;
     const n = data.normalized;
-    console.log(`[claudeState] 갱신: 세션 ${n.sessionPercent ?? '?'}% / 주간 ${n.weeklyPercent ?? '?'}%`);
+    console.log(`[claudeState] 갱신: 세션 ${n.sessionPercent ?? '?'}% / 주간 ${n.weeklyPercent ?? '?'}%${codexLogSuffix()}`);
 
     // 세션 리셋 감지 (영속 저장 기반)
     // 규칙:
@@ -439,14 +652,16 @@ async function refreshUsage() {
       storage.setLastSessionResetAt(cur);
     }
 
-    broadcast('usage:update', { status: 'ok', data });
+    broadcastUsage({ status: 'ok', data });
   } catch (err) {
+    // Claude 조회가 깨져도 Codex 값은 실어 보낸다.
+    await codexTask;
     if (err.code === 'AUTH_EXPIRED') {
       console.error(`[claudeState] 쿠키 만료 감지: ${err.message}`);
-      broadcast('usage:update', { status: 'auth_expired', message: err.message });
+      broadcastUsage({ status: 'auth_expired', message: err.message });
     } else {
       console.error(`[claudeState] API 실패: ${err.message}`);
-      broadcast('usage:update', { status: 'error', message: err.message });
+      broadcastUsage({ status: 'error', message: err.message });
     }
   }
 }
@@ -460,6 +675,9 @@ function broadcast(channel, payload) {
 }
 
 function onSessionReset(weeklyPercent) {
+  // VS Code 확장(claudeStateBar)도 같은 리셋 알림을 보낸다. 둘 다 쓰면 두 번 오므로
+  // 끌 수 있게 했다. 이 앱만 쓰는 사용자에게는 필요한 기능이라 기본은 켜 둔다.
+  if (!storage.getTelegramNotifyOnReset()) return;
   const token = storage.getTelegramBotToken();
   const chatId = storage.getTelegramChatId();
   if (!token || !chatId) return;
@@ -481,19 +699,110 @@ function bringWidgetToTop() {
   if (!widgetWindow.isVisible()) return;
   try {
     widgetWindow.moveTop();
+    // 패널도 같이 올린다. 위젯만 올리면 열려 있던 패널이 작업표시줄 뒤로 깔린다.
+    if (panelVisible && panelWindow && !panelWindow.isDestroyed()) panelWindow.moveTop();
   } catch {}
 }
 
 // 정상 경로: 작업표시줄 z-order 이벤트 훅 (src/taskbarGuard.js).
 // 다른 창이 포그라운드가 되는 순간만 감지해 위젯을 복원 → 깜빡임/지연/유휴부하 0.
 // FFI 로드/훅 등록이 실패하는 환경에서만 폴링 폴백으로 내려간다.
+// ---------------------------------------------------------------------------
+// 전체화면 복귀 대응 — 조건부 z-order 감시 (v0.4.1)
+//
+// 이벤트 훅만으로는 못 잡는 경로가 있다. 브라우저 F11 이나 동영상 내부 전체화면은
+// 같은 HWND 가 계속 포그라운드라 EVENT_SYSTEM_FOREGROUND 가 발생하지 않는다.
+// 그래서 복귀 후 위젯이 작업표시줄 뒤에 깔리면 **복원을 부를 경로가 하나도 없다.**
+//
+// 🔴 v0.3.1 에서 실패한 워치독과는 다르다. 그것은 3초마다 조건 없이 moveTop +
+// setAlwaysOnTop 을 실행해 깜빡임을 만들었다. 이쪽은 값 몇 개를 읽고, 아래 네 조건이
+// 모두 맞을 때만 1회 올린다 — 정상 상태에서 z-order 변경은 0회다.
+//
+//   ① 위젯이 표시 중                ② 위젯이 작업표시줄 영역과 겹침
+//   ③ 잠금·전체화면·프레젠테이션이 아님   ④ 실제 Win32 순서에서 작업표시줄이 위젯보다 위
+// ---------------------------------------------------------------------------
+const ZORDER_AUDIT_MS = 1000;      // 감시 주기 (2026-08-26 사용자 결정)
+const ZORDER_DEBOUNCE_MS = 80;
+const ZORDER_RECHECK_MS = 120;     // 복원 직후 성공 여부를 되재는 간격
+
+let zorderTimer = null;
+let zorderDebounce = null;
+let zorderAuditEnabled = false;
+
+// 위젯이 작업표시줄 영역을 침범하고 있는가.
+// workArea 는 작업표시줄을 제외한 영역이므로, 그 밖으로 나가 있으면 겹친 것이다.
+function widgetOverlapsTaskbarArea() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return false;
+  const b = widgetWindow.getBounds();
+  const a = screen.getDisplayMatching(b).workArea;
+  return b.x < a.x || b.y < a.y
+    || b.x + b.width > a.x + a.width
+    || b.y + b.height > a.y + a.height;
+}
+
+function auditTaskbarZOrder(reason) {
+  if (!zorderAuditEnabled) return;
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  if (!widgetWindow.isVisible()) return;
+  if (!widgetOverlapsTaskbarArea()) return;
+
+  // 전체화면·프레젠테이션·잠금 중에 끌어올리면 영상 위로 위젯이 튀어나온다.
+  const st = taskbarGuard.queryNotificationState();
+  if (st !== null && st >= 1 && st <= 4) return;
+
+  if (!taskbarGuard.isOverlappedByTaskbarAbove(widgetWindow.getNativeWindowHandle())) return;
+
+  console.warn(`[claudeState] z-order 이상 감지 (${reason}) → 복원 시도`);
+  bringWidgetToTop();
+
+  // 복원됐는지 실제로 되재야 "훅 미수신"과 "moveTop 무효"를 구분할 수 있다.
+  // 이 구분 로그가 없어서 원인 규명에 시간이 걸렸다.
+  setTimeout(() => {
+    if (!widgetWindow || widgetWindow.isDestroyed()) return;
+    const h = widgetWindow.getNativeWindowHandle();
+    if (!taskbarGuard.isOverlappedByTaskbarAbove(h)) {
+      console.log('[claudeState] z-order 복원 성공 (moveTop)');
+      return;
+    }
+    // moveTop 이 안 먹었다 = 밴드 내 순서가 아니라 topmost 소속 자체를 잃었을 수 있다.
+    const called = taskbarGuard.forceTopmost(h);
+    const fixed = !taskbarGuard.isOverlappedByTaskbarAbove(h);
+    console.warn(
+      `[claudeState] moveTop 무효 → SetWindowPos(HWND_TOPMOST) ${called ? '호출' : '실패'} / 결과 ${fixed ? '성공' : '실패'}`
+    );
+  }, ZORDER_RECHECK_MS);
+}
+
+// WinEvent 콜백 안에서 무거운 일을 하지 않도록 한 박자 빼서 실행한다.
+function scheduleZOrderAudit(reason) {
+  if (zorderDebounce) clearTimeout(zorderDebounce);
+  zorderDebounce = setTimeout(() => auditTaskbarZOrder(reason), ZORDER_DEBOUNCE_MS);
+}
+
 function startTaskbarGuard() {
   try {
+    // 🔴 기존 콜백은 그대로 둔다. 작업표시줄 클릭 복원은 지금 잘 동작하는 경로라
+    //    조건부로 바꾸면 회귀 위험만 생긴다. 새 감시는 타이머 쪽에만 붙인다.
     taskbarGuard.start(() => bringWidgetToTop());
     console.log('[claudeState] 작업표시줄 z-order 이벤트 훅 활성화');
   } catch (e) {
     console.error(`[claudeState] 이벤트 훅 실패 → 폴링 폴백: ${e.message}`);
     startPollingFallback();
+    return;
+  }
+
+  // 조회 FFI 가 안 되는 환경이면 감시만 끈다 — 그 경우 동작은 v0.4.0 과 완전히 같다.
+  try {
+    taskbarGuard.queryNotificationState();
+    if (widgetWindow && !widgetWindow.isDestroyed()) {
+      taskbarGuard.isOverlappedByTaskbarAbove(widgetWindow.getNativeWindowHandle());
+    }
+    zorderAuditEnabled = true;
+    zorderTimer = setInterval(() => auditTaskbarZOrder('watchdog'), ZORDER_AUDIT_MS);
+    console.log(`[claudeState] z-order 조건부 감시 활성화 (${ZORDER_AUDIT_MS}ms · 정상 시 무동작)`);
+  } catch (e) {
+    zorderAuditEnabled = false;
+    console.error(`[claudeState] z-order 조회 불가 → 조건부 감시 비활성화: ${e.message}`);
   }
 }
 
@@ -505,11 +814,15 @@ function startPollingFallback() {
   reaffirmTimer = setInterval(bringWidgetToTop, REAFFIRM_INTERVAL_MS);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   installLogTee();
   i18n.setLanguage(storage.getLanguage());
   syncAutoLaunch();
+  // 창을 만들기 전에 감지한다. 만든 뒤에 넓히면 우하단에 붙은 위젯이 한 번 움찔한다.
+  // 실측 82ms 라 시작이 느려지지 않는다.
+  await refreshCodexDetection();
   createWidgetWindow();
+  createPanelWindow();
   createTray();
   startFetchLoop();
   startTaskbarGuard();
@@ -535,6 +848,12 @@ app.on('window-all-closed', (e) => {
 app.on('before-quit', () => {
   try { taskbarGuard.stop(); } catch {}
   if (reaffirmTimer) { clearInterval(reaffirmTimer); reaffirmTimer = null; }
+  if (zorderTimer) { clearInterval(zorderTimer); zorderTimer = null; }
+  if (zorderDebounce) { clearTimeout(zorderDebounce); zorderDebounce = null; }
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    panelWindow.destroy();
+    panelWindow = null;
+  }
   if (widgetWindow && !widgetWindow.isDestroyed()) {
     const [wx, wy] = widgetWindow.getPosition();
     storage.setWindowPosition({ x: wx, y: wy });
@@ -610,7 +929,13 @@ ipcMain.handle('i18n:get', () => ({
 
 ipcMain.handle('telegram:get', () => ({
   botToken: storage.getTelegramBotToken(),
-  chatId: storage.getTelegramChatId()
+  chatId: storage.getTelegramChatId(),
+  notifyOnReset: storage.getTelegramNotifyOnReset()
+}));
+
+ipcMain.handle('telegram:set-notify', (_e, enabled) => ({
+  ok: true,
+  notifyOnReset: storage.setTelegramNotifyOnReset(enabled)
 }));
 
 ipcMain.handle('telegram:save-token', (_e, token) => {
@@ -659,9 +984,31 @@ ipcMain.handle('widget:context-menu', () => {
   showWidgetContextMenu();
 });
 
-// 위치 변경 시마다 크기를 280x40으로 강제 재설정 (Electron 창 크기 왜곡 방지)
-const WIDGET_W = 280, WIDGET_H = 40;
+ipcMain.handle('panel:show', () => {
+  showPanel();
+});
 
+ipcMain.handle('panel:hide', () => {
+  hidePanel();
+});
+
+// 패널 높이는 내용이 정한다. Codex 유무·모델별 수치 유무로 줄 수가 달라지기 때문에
+// 렌더러가 잰 값을 그대로 쓴다. 범위를 잡아 두는 건 잘못된 값이 와도 창이 망가지지 않게 하려는 것.
+ipcMain.handle('panel:resize', (_event, height) => {
+  const h = Math.round(Number(height) || 0);
+  if (!Number.isFinite(h) || h <= 0) return;
+  const clamped = Math.max(80, Math.min(600, h));
+  if (clamped === panelHeight) return;
+  panelHeight = clamped;
+  if (panelVisible) {
+    positionPanel();
+  } else if (panelWindow && !panelWindow.isDestroyed()) {
+    const b = panelWindow.getBounds();
+    panelWindow.setBounds({ x: b.x, y: b.y, width: PANEL_W, height: clamped }, false);
+  }
+});
+
+// 위치 변경 시마다 크기를 현재 규격으로 강제 재설정 (Electron 창 크기 왜곡 방지)
 function reaffirmWidgetState() {
   if (!widgetWindow || widgetWindow.isDestroyed()) return;
   try {
@@ -676,7 +1023,7 @@ ipcMain.handle('widget:move', (_event, dx, dy) => {
   widgetWindow.setBounds({
     x: Math.round(x + dx),
     y: Math.round(y + dy),
-    width: WIDGET_W,
+    width: widgetW(),
     height: WIDGET_H
   }, false);
   reaffirmWidgetState();
@@ -693,7 +1040,7 @@ ipcMain.handle('widget:set-position', (_event, x, y) => {
   widgetWindow.setBounds({
     x: Math.round(x),
     y: Math.round(y),
-    width: WIDGET_W,
+    width: widgetW(),
     height: WIDGET_H
   }, false);
   reaffirmWidgetState();
