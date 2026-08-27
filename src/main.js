@@ -30,7 +30,7 @@ app.on('second-instance', () => {
   }
   if (widgetWindow && !widgetWindow.isDestroyed()) {
     if (widgetWindow.isMinimized()) widgetWindow.restore();
-    widgetWindow.showInactive();
+    syncWidgetVisibility('second-instance');
   }
 });
 
@@ -505,11 +505,12 @@ function showWidget() {
   if (!widgetWindow || widgetWindow.isDestroyed()) {
     createWidgetWindow();
   } else {
-    widgetWindow.showInactive();
+    syncWidgetVisibility('user-show');
     // show는 우리 프로세스 내부 동작이라(SKIPOWNPROCESS) 이벤트 훅이 발동하지 않는다.
     // 작업표시줄 영역 위에 있으면 뒤에 깔린 채 안 올라오므로 여기서 직접 최상위로 복원.
+    // (전체화면 중이라 syncWidgetVisibility 가 실제로 보여주지 않았다면 아래는 무해하게 스킵된다)
     setImmediate(() => {
-      if (!widgetWindow || widgetWindow.isDestroyed()) return;
+      if (!widgetWindow || widgetWindow.isDestroyed() || !widgetWindow.isVisible()) return;
       applyWidgetSize();
       widgetWindow.setAlwaysOnTop(true, 'normal');
       widgetWindow.setOpacity(storage.getWidgetOpacity());
@@ -521,11 +522,7 @@ function showWidget() {
 
 function hideWidget() {
   storage.setWidgetVisible(false);
-  // 위젯이 사라졌는데 패널만 남아 떠 있으면 유령처럼 보인다.
-  hidePanel();
-  if (widgetWindow && !widgetWindow.isDestroyed()) {
-    widgetWindow.hide();
-  }
+  syncWidgetVisibility('user-hide');
   rebuildTrayMenu();
 }
 
@@ -725,9 +722,97 @@ const ZORDER_AUDIT_MS = 1000;      // 감시 주기 (2026-08-26 사용자 결정
 const ZORDER_DEBOUNCE_MS = 80;
 const ZORDER_RECHECK_MS = 120;     // 복원 직후 성공 여부를 되재는 간격
 
+// 전체화면 능동 숨김의 진입/이탈 확인 횟수 (1초 폴링 기준). 진입은 즉시, 이탈은 1회
+// 더 확인해 짧은 흔들림에 반응하지 않는다 (2026-08-27, codex_rescue 조사 기반).
+const FULLSCREEN_HIDE_ENTER_SAMPLES = 1;
+const FULLSCREEN_HIDE_EXIT_SAMPLES = 2;
+
 let zorderTimer = null;
 let zorderDebounce = null;
 let zorderAuditEnabled = false;
+let fullscreenHideActive = false;
+let fullscreenEnterRun = 0;
+let fullscreenExitRun = 0;
+
+// z-order 복원 억제(끌어올림 보류)용 — 보수적으로 넓게 잡는다. 잠금·BUSY·전체화면·
+// 프레젠테이션 중에 위젯을 끌어올리면 화면 위로 튀어나온다.
+function isFullscreenLikeState(st) {
+  return st !== null && st >= 1 && st <= 4;
+}
+
+// 능동 숨김 트리거용 — 좁게 잡는다. SHQUNS 값 2(QUNS_BUSY)는 "알림을 띄워도 되는가"의
+// 광범위한 휴리스틱일 뿐 안정적인 전체화면 신호가 아니다. codex_rescue 조사
+// (docs/codex_rescue/260827_081321_response_fullscreen-hide-flicker.md)로 확인된
+// 실제 원인 — 1~4 를 전부 능동 숨김에 연결해 이 값의 흔들림이 그대로 깜빡임이 됐다.
+// Chromium 도 같은 API에서 3/4 만 fullscreen 으로 인정한다.
+function isPlatformFullscreenState(st) {
+  return st === 3 || st === 4;
+}
+
+// 활성 창이 모니터 화면(작업표시줄 포함 전체 해상도)을 통째로 덮고 있는가.
+// 브라우저의 웹 전체화면(유튜브·넷플릭스 등 Fullscreen API)은 SHQueryUserNotificationState 로
+// 못 잡으므로 native Win32 좌표계에서 직접 계산한다 — Electron 의 screen 모듈(DIP 좌표)과
+// 섞으면 고배율 DPI 환경에서 판정이 어긋난다(이전 버전의 결함, 실전 0건 성공으로 확인됨).
+let lastFullscreenGeometryActive = null; // 진단용 — 판정이 뒤집힐 때만 상세 로그
+
+function isForegroundFullscreen() {
+  const info = taskbarGuard.getForegroundFullscreenInfo();
+  if (info.covers !== lastFullscreenGeometryActive) {
+    const r = info.rect ? `(${info.rect.left},${info.rect.top})-(${info.rect.right},${info.rect.bottom})` : 'na';
+    const mr = info.monitorRect
+      ? `(${info.monitorRect.left},${info.monitorRect.top})-(${info.monitorRect.right},${info.monitorRect.bottom})`
+      : 'na';
+    console.log(
+      `[claudeState] 전체화면 native 판정 전이: covers=${info.covers} reason=${info.reason} ` +
+      `class="${info.className || ''}" style=0x${(info.style >>> 0 || 0).toString(16)} ` +
+      `exStyle=0x${(info.exStyle >>> 0 || 0).toString(16)} rect=${r} monitor=${mr}`
+    );
+    lastFullscreenGeometryActive = info.covers;
+  }
+  return info.covers;
+}
+
+// 위젯을 보이고/숨기는 유일한 창구. 사용자 표시 의도(storage.getWidgetVisible)와
+// 전체화면 정책(fullscreenHideActive)을 합쳐 실제 가시성과 맞춘다.
+// second-instance·트레이 show/hide 가 각자 showInactive()/hide() 를 직접 부르면 이
+// 정책을 우회해 "전체화면 중인데 다시 나타남" 같은 꼬임이 생긴다 — codex_rescue 조사에서
+// 08:08:14→08:08:25 재현의 유력 원인으로 지목된 지점이다.
+function syncWidgetVisibility(reason) {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  const shouldShow = storage.getWidgetVisible() && !fullscreenHideActive;
+
+  if (shouldShow && !widgetWindow.isVisible()) {
+    widgetWindow.showInactive();
+    console.log(`[claudeState] 위젯 표시 (${reason})`);
+  } else if (!shouldShow && widgetWindow.isVisible()) {
+    widgetWindow.hide();
+    hidePanel();
+    console.log(`[claudeState] 위젯 숨김 (${reason})`);
+  }
+}
+
+// 전체화면(동영상 전체화면·게임 등) 감지 시 위젯을 완전히 숨긴다 (2026-08-27 사용자 결정).
+function auditFullscreenHide() {
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  const st = taskbarGuard.queryNotificationState();
+  const active = isPlatformFullscreenState(st) || isForegroundFullscreen();
+
+  if (active) {
+    fullscreenEnterRun += 1;
+    fullscreenExitRun = 0;
+  } else {
+    fullscreenExitRun += 1;
+    fullscreenEnterRun = 0;
+  }
+
+  if (!fullscreenHideActive && fullscreenEnterRun >= FULLSCREEN_HIDE_ENTER_SAMPLES) {
+    fullscreenHideActive = true;
+  } else if (fullscreenHideActive && fullscreenExitRun >= FULLSCREEN_HIDE_EXIT_SAMPLES) {
+    fullscreenHideActive = false;
+  }
+
+  syncWidgetVisibility('fullscreen-audit');
+}
 
 // 위젯이 작업표시줄 영역을 침범하고 있는가.
 // workArea 는 작업표시줄을 제외한 영역이므로, 그 밖으로 나가 있으면 겹친 것이다.
@@ -748,7 +833,7 @@ function auditTaskbarZOrder(reason) {
 
   // 전체화면·프레젠테이션·잠금 중에 끌어올리면 영상 위로 위젯이 튀어나온다.
   const st = taskbarGuard.queryNotificationState();
-  if (st !== null && st >= 1 && st <= 4) return;
+  if (isFullscreenLikeState(st)) return;
 
   if (!taskbarGuard.isOverlappedByTaskbarAbove(widgetWindow.getNativeWindowHandle())) return;
 
@@ -776,7 +861,10 @@ function auditTaskbarZOrder(reason) {
 // WinEvent 콜백 안에서 무거운 일을 하지 않도록 한 박자 빼서 실행한다.
 function scheduleZOrderAudit(reason) {
   if (zorderDebounce) clearTimeout(zorderDebounce);
-  zorderDebounce = setTimeout(() => auditTaskbarZOrder(reason), ZORDER_DEBOUNCE_MS);
+  zorderDebounce = setTimeout(() => {
+    auditFullscreenHide();
+    auditTaskbarZOrder(reason);
+  }, ZORDER_DEBOUNCE_MS);
 }
 
 function startTaskbarGuard() {
@@ -798,7 +886,10 @@ function startTaskbarGuard() {
       taskbarGuard.isOverlappedByTaskbarAbove(widgetWindow.getNativeWindowHandle());
     }
     zorderAuditEnabled = true;
-    zorderTimer = setInterval(() => auditTaskbarZOrder('watchdog'), ZORDER_AUDIT_MS);
+    zorderTimer = setInterval(() => {
+      auditFullscreenHide();
+      auditTaskbarZOrder('watchdog');
+    }, ZORDER_AUDIT_MS);
     console.log(`[claudeState] z-order 조건부 감시 활성화 (${ZORDER_AUDIT_MS}ms · 정상 시 무동작)`);
   } catch (e) {
     zorderAuditEnabled = false;

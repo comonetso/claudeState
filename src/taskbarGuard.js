@@ -42,6 +42,10 @@ const SWP_NOMOVE = 0x0002;
 const SWP_NOACTIVATE = 0x0010;
 const SWP_NOOWNERZORDER = 0x0200;
 
+const MONITOR_DEFAULTTONULL = 0x0000;
+const GWL_STYLE = -16;
+const GWL_EXSTYLE = -20;
+
 let user32 = null;
 let shell32 = null;
 let SetWinEventHook = null;
@@ -52,6 +56,11 @@ let GetWindowRect = null;
 let IsWindowVisible = null;
 let SetWindowPos = null;
 let SHQueryUserNotificationState = null;
+let GetForegroundWindow = null;
+let GetClassNameW = null;
+let MonitorFromRect = null;
+let GetMonitorInfoW = null;
+let GetWindowLongW = null;
 let hook = null;
 let registeredCb = null;
 let started = false;
@@ -67,6 +76,12 @@ function loadNative() {
   shell32 = koffi.load('shell32.dll');
 
   koffi.struct('RECT', { left: 'int32', top: 'int32', right: 'int32', bottom: 'int32' });
+  koffi.struct('MONITORINFO', {
+    cbSize: 'uint32',
+    rcMonitor: 'RECT',
+    rcWork: 'RECT',
+    dwFlags: 'uint32'
+  });
 
   // WINEVENTPROC 콜백 시그니처
   WinEventProc = koffi.proto(
@@ -86,6 +101,11 @@ function loadNative() {
   IsWindowVisible = user32.func('bool IsWindowVisible(uint64 hwnd)');
   SetWindowPos = user32.func('bool SetWindowPos(uint64 hwnd, uint64 insertAfter, int32 x, int32 y, int32 cx, int32 cy, uint32 flags)');
   SHQueryUserNotificationState = shell32.func('int32 SHQueryUserNotificationState(_Out_ int32* state)');
+  GetForegroundWindow = user32.func('uint64 GetForegroundWindow()');
+  GetClassNameW = user32.func('int32 GetClassNameW(uint64 hwnd, _Out_ uint16* className, int32 maxCount)');
+  MonitorFromRect = user32.func('uint64 MonitorFromRect(const RECT* lprc, uint32 dwFlags)');
+  GetMonitorInfoW = user32.func('bool GetMonitorInfoW(uint64 hMonitor, _Inout_ MONITORINFO* lpmi)');
+  GetWindowLongW = user32.func('int32 GetWindowLongW(uint64 hwnd, int32 nIndex)');
 
   nativeReady = true;
 }
@@ -159,6 +179,75 @@ function isOverlappedByTaskbarAbove(handleBuf) {
 }
 
 /**
+ * 지금 활성 창(포그라운드 창)의 화면 좌표 사각형.
+ * 호출부가 모니터 전체 크기와 비교해 "화면을 통째로 덮는 전체화면 창인가"를 판정한다.
+ * SHQueryUserNotificationState 는 D3D 배타 전체화면만 잡고, 브라우저의 웹 전체화면
+ * (유튜브·넷플릭스 등 Fullscreen API)이나 일부 플레이어의 창 전체화면은 못 잡기 때문에 필요하다.
+ */
+function classNameOf(hwnd) {
+  const buf = Buffer.alloc(512);
+  const len = GetClassNameW(hwnd, buf, 256);
+  return len > 0 ? buf.toString('utf16le', 0, len * 2) : '';
+}
+
+// rect 가 속한 모니터의 전체 화면 영역(작업표시줄 포함, native 좌표계).
+// MonitorFromRect/GetMonitorInfoW 는 GetWindowRect 와 같은 Win32 좌표계를 쓰므로,
+// Electron 의 screen.getDisplayMatching()(DIP 좌표)과 섞이지 않는다 — 고배율 DPI 대응.
+function monitorRectFor(rect) {
+  const hMon = MonitorFromRect(rect, MONITOR_DEFAULTTONULL);
+  if (!hMon) return null;
+  const mi = { cbSize: koffi.sizeof('MONITORINFO'), rcMonitor: rect, rcWork: rect, dwFlags: 0 };
+  const out = [mi];
+  return GetMonitorInfoW(hMon, out) ? out[0].rcMonitor : null;
+}
+
+/**
+ * 지금 활성 창이 자기 모니터 화면을 통째로 덮는 "진짜 전체화면" 인가.
+ * - 좌표는 전부 native(Win32) 좌표계에서만 비교한다.
+ * - 프레임(캡션·크기조절 테두리)이 있는 창은 최대화라도 제외한다 — 최대화는 보통
+ *   작업표시줄 영역을 남기지만, DPI 가상 경계 때문에 드물게 rect 가 모니터 전체와
+ *   같아지는 경우가 있어 스타일로 이중 확인한다.
+ */
+function getForegroundFullscreenInfo() {
+  loadNative();
+  const hwnd = GetForegroundWindow();
+  if (!hwnd) return { covers: false, reason: 'no-foreground' };
+
+  const rect = rectOf(hwnd);
+  if (!rect) return { covers: false, reason: 'no-rect' };
+
+  let className = '';
+  try { className = classNameOf(hwnd); } catch {}
+  if (FULLSCREEN_EXCLUDE_CLASSES.has(className)) {
+    return { covers: false, className, rect, reason: 'excluded-class' };
+  }
+
+  const monitorRect = monitorRectFor(rect);
+  if (!monitorRect) return { covers: false, className, rect, reason: 'no-monitor' };
+
+  const style = GetWindowLongW(hwnd, GWL_STYLE);
+  const exStyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
+  // 스타일(캡션·크기조절 테두리) 기반 필터는 뺐다 — 실측(2026-08-27) 결과 Chrome/Edge 는
+  // F11·웹 Fullscreen API 전체화면에서도 WS_DLGFRAME|WS_THICKFRAME 비트를 그대로 유지한 채
+  // 크기만 화면 전체로 키운다. 이 필터가 있으면 브라우저 전체화면을 영원히 못 잡는다.
+  // 크기 비교만으로 최대화(작업표시줄 영역을 남김)와 전체화면(작업표시줄까지 덮음)이 이미
+  // 구별되므로, 여기서는 style/exStyle 을 진단 로그용으로만 남긴다.
+  const TOLERANCE = 2;
+  const covers = rect.left <= monitorRect.left + TOLERANCE
+    && rect.top <= monitorRect.top + TOLERANCE
+    && rect.right >= monitorRect.right - TOLERANCE
+    && rect.bottom >= monitorRect.bottom - TOLERANCE;
+
+  return {
+    covers, className, rect, monitorRect, style, exStyle,
+    reason: covers ? 'native-cover' : 'not-cover'
+  };
+}
+
+// 바탕화면(Progman/WorkerW) 자체는 항상 모니터 전체 크기라 오탐의 원인이 된다.
+const FULLSCREEN_EXCLUDE_CLASSES = new Set(['Progman', 'WorkerW']);
+
+/**
  * moveTop() 으로 복원되지 않을 때의 마지막 수단.
  * topmost 밴드 "소속" 자체를 잃은 경우를 되돌린다. 포커스는 건드리지 않는다.
  */
@@ -223,5 +312,6 @@ module.exports = {
   stop,
   queryNotificationState,
   isOverlappedByTaskbarAbove,
-  forceTopmost
+  forceTopmost,
+  getForegroundFullscreenInfo
 };
