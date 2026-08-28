@@ -45,9 +45,11 @@ const SWP_NOOWNERZORDER = 0x0200;
 const MONITOR_DEFAULTTONULL = 0x0000;
 const GWL_STYLE = -16;
 const GWL_EXSTYLE = -20;
+const DWMWA_CLOAKED = 14;
 
 let user32 = null;
 let shell32 = null;
+let dwmapi = null;
 let SetWinEventHook = null;
 let UnhookWinEvent = null;
 let FindWindowExW = null;
@@ -57,6 +59,10 @@ let IsWindowVisible = null;
 let SetWindowPos = null;
 let SHQueryUserNotificationState = null;
 let GetForegroundWindow = null;
+let IsWindow = null;
+let IsIconic = null;
+let GetWindowThreadProcessId = null;
+let DwmGetWindowAttribute = null;
 let GetClassNameW = null;
 let MonitorFromRect = null;
 let GetMonitorInfoW = null;
@@ -74,6 +80,7 @@ function loadNative() {
 
   user32 = koffi.load('user32.dll');
   shell32 = koffi.load('shell32.dll');
+  dwmapi = koffi.load('dwmapi.dll');
 
   koffi.struct('RECT', { left: 'int32', top: 'int32', right: 'int32', bottom: 'int32' });
   koffi.struct('MONITORINFO', {
@@ -102,6 +109,10 @@ function loadNative() {
   SetWindowPos = user32.func('bool SetWindowPos(uint64 hwnd, uint64 insertAfter, int32 x, int32 y, int32 cx, int32 cy, uint32 flags)');
   SHQueryUserNotificationState = shell32.func('int32 SHQueryUserNotificationState(_Out_ int32* state)');
   GetForegroundWindow = user32.func('uint64 GetForegroundWindow()');
+  IsWindow = user32.func('bool IsWindow(uint64 hwnd)');
+  IsIconic = user32.func('bool IsIconic(uint64 hwnd)');
+  GetWindowThreadProcessId = user32.func('uint32 GetWindowThreadProcessId(uint64 hwnd, _Out_ uint32* pid)');
+  DwmGetWindowAttribute = dwmapi.func('int32 DwmGetWindowAttribute(uint64 hwnd, uint32 attr, _Out_ uint32* value, uint32 size)');
   GetClassNameW = user32.func('int32 GetClassNameW(uint64 hwnd, _Out_ uint16* className, int32 maxCount)');
   MonitorFromRect = user32.func('uint64 MonitorFromRect(const RECT* lprc, uint32 dwFlags)');
   GetMonitorInfoW = user32.func('bool GetMonitorInfoW(uint64 hMonitor, _Inout_ MONITORINFO* lpmi)');
@@ -120,6 +131,21 @@ function hwndFromBuffer(buf) {
 function rectOf(hwnd) {
   const out = [null];
   return GetWindowRect(hwnd, out) ? out[0] : null;
+}
+
+function processIdOf(hwnd) {
+  const out = [0];
+  return GetWindowThreadProcessId(hwnd, out) ? out[0] : 0;
+}
+
+// IsWindowVisible 은 WS_VISIBLE 스타일만 보고 실제 픽셀 가시성은 보지 않는다 — Windows 11
+// 위젯 패널·알림 센터 같은 슬라이드 패널은 화면 밖으로 안 빠져 있어도 DWM 이 안 그리는
+// "cloaked" 상태로 존재할 수 있다(2026-08-28 실측: 항상 같은 좌표의 Windows.UI.Core.CoreWindow
+// 가 매번 obstruction 후보로 잡혔다). cloaked 면 실제로는 안 보이는 것이니 후보에서 뺀다.
+function isCloaked(hwnd) {
+  const out = [0];
+  const hr = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out, 4);
+  return hr === 0 && out[0] !== 0;
 }
 
 function intersects(a, b) {
@@ -183,6 +209,12 @@ function isOverlappedByTaskbarAbove(handleBuf) {
  * 호출부가 모니터 전체 크기와 비교해 "화면을 통째로 덮는 전체화면 창인가"를 판정한다.
  * SHQueryUserNotificationState 는 D3D 배타 전체화면만 잡고, 브라우저의 웹 전체화면
  * (유튜브·넷플릭스 등 Fullscreen API)이나 일부 플레이어의 창 전체화면은 못 잡기 때문에 필요하다.
+ *
+ * z-order 최상단부터 순회하는 방식은 2026-08-28에 시도했다가 회귀로 되돌렸다 — 위젯 바로
+ * 다음으로 만나는 창이 트레이 팝업 등 화면을 안 덮는 작은 topmost 시스템 창인 경우가 잦아,
+ * 그 창에서 판정이 멈춰버려 그 아래 실제 전체화면 창까지 순회가 도달하지 못했다(전체화면 진입
+ * 자체를 못 잡는 회귀). "포커스가 다른 창으로 가도 직전 전체화면 창이 안 가려져 있으면 유지"는
+ * 아래 isStillCoveringUnobstructed()로 그 특정 창 하나만 좁게 재확인하는 방식으로 처리한다.
  */
 function classNameOf(hwnd) {
   const buf = Buffer.alloc(512);
@@ -208,11 +240,7 @@ function monitorRectFor(rect) {
  *   작업표시줄 영역을 남기지만, DPI 가상 경계 때문에 드물게 rect 가 모니터 전체와
  *   같아지는 경우가 있어 스타일로 이중 확인한다.
  */
-function getForegroundFullscreenInfo() {
-  loadNative();
-  const hwnd = GetForegroundWindow();
-  if (!hwnd) return { covers: false, reason: 'no-foreground' };
-
+function evaluateWindowCoverage(hwnd) {
   const rect = rectOf(hwnd);
   if (!rect) return { covers: false, reason: 'no-rect' };
 
@@ -244,8 +272,63 @@ function getForegroundFullscreenInfo() {
   };
 }
 
+function getForegroundFullscreenInfo() {
+  loadNative();
+  const hwnd = GetForegroundWindow();
+  if (!hwnd) return { covers: false, reason: 'no-foreground' };
+  return { ...evaluateWindowCoverage(hwnd), hwnd };
+}
+
+/**
+ * 특정 창(직전에 전체화면으로 판정됐던 창)이 지금도 여전히 존재·표시 중이고, 여전히
+ * 모니터를 덮으며, 위젯을 제외한 다른 "보이는" 창이 그 창 위(z-order)에서 겹쳐 있지
+ * 않은지를 좁게 확인한다. 포커스가 다른 창으로 넘어간 순간에도 "실제로는 안 가려짐"을
+ * 구분하기 위한 용도 — 대상 창 하나의 z-order 위쪽만 훑으므로 시스템 전역 순회보다 안전하다.
+ */
+function isStillCoveringUnobstructed(hwnd, widgetHandleBuf) {
+  loadNative();
+  if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd)) {
+    return { covers: false, reason: 'window-gone' };
+  }
+
+  const info = evaluateWindowCoverage(hwnd);
+  if (!info.covers) return info;
+
+  const widget = hwndFromBuffer(widgetHandleBuf);
+  const targetPid = processIdOf(hwnd);
+  let cursor = hwnd;
+  const seen = new Set([String(hwnd)]);
+  for (let i = 0; i < 4096; i++) {
+    cursor = GetWindow(cursor, GW_HWNDPREV);
+    if (!cursor) break;
+    const key = String(cursor);
+    if (seen.has(key)) break;
+    seen.add(key);
+    if (cursor === widget) continue;
+    if (!IsWindowVisible(cursor) || IsIconic(cursor)) continue;
+    if (isCloaked(cursor)) continue;
+    let obstructedBy = '';
+    try { obstructedBy = classNameOf(cursor); } catch {}
+    // 작업표시줄은 전체화면 전환 중 z-order 가 흔들려 실제로는 안 가려도 위로 올라올 수 있다
+    // (파일 상단 "작업표시줄 z-order 근본 대응" 참조). 이 자체를 "다른 창이 동영상을 가렸다"로
+    // 보면 안 되므로 obstruction 판정에서 제외한다.
+    if (TASKBAR_CLASSES.has(obstructedBy)) continue;
+    // 같은 프로세스(같은 앱)가 자기 자신 위에 띄우는 배너·오버레이는 "다른 창이 가렸다"가
+    // 아니다 — 실측(2026-08-28)으로 크롬이 전체화면 중 자기 프로세스의 얇은 창(안내 배너로
+    // 추정)을 z-order 바로 위에 잠깐 띄우는 것을 확인했다. 그것 때문에 그 아래 실제로 있는
+    // 다른 프로세스 창(예: 사용자가 진짜 전환한 앱)까지 순회가 도달하지 못했다.
+    if (targetPid && processIdOf(cursor) === targetPid) continue;
+    const r = rectOf(cursor);
+    if (r && intersects(info.rect, r)) {
+      return { ...info, covers: false, reason: 'obstructed', obstructedBy, obstructedRect: r };
+    }
+  }
+  return info;
+}
+
 // 바탕화면(Progman/WorkerW) 자체는 항상 모니터 전체 크기라 오탐의 원인이 된다.
 const FULLSCREEN_EXCLUDE_CLASSES = new Set(['Progman', 'WorkerW']);
+const TASKBAR_CLASSES = new Set(['Shell_TrayWnd', 'Shell_SecondaryTrayWnd']);
 
 /**
  * moveTop() 으로 복원되지 않을 때의 마지막 수단.
@@ -313,5 +396,6 @@ module.exports = {
   queryNotificationState,
   isOverlappedByTaskbarAbove,
   forceTopmost,
-  getForegroundFullscreenInfo
+  getForegroundFullscreenInfo,
+  isStillCoveringUnobstructed
 };

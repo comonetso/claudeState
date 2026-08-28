@@ -754,9 +754,52 @@ function isPlatformFullscreenState(st) {
 // 못 잡으므로 native Win32 좌표계에서 직접 계산한다 — Electron 의 screen 모듈(DIP 좌표)과
 // 섞으면 고배율 DPI 환경에서 판정이 어긋난다(이전 버전의 결함, 실전 0건 성공으로 확인됨).
 let lastFullscreenGeometryActive = null; // 진단용 — 판정이 뒤집힐 때만 상세 로그
+let lastFullscreenWindowHandle = null; // 포커스를 잃어도 "여전히 안 가려짐"을 재확인할 대상
+let obstructedRun = 0; // 같은 창이 다른 창에 가려진 것으로 연속 확인된 횟수(1초 폴링 기준)
 
 function isForegroundFullscreen() {
-  const info = taskbarGuard.getForegroundFullscreenInfo();
+  if (!widgetWindow || widgetWindow.isDestroyed()) return false;
+
+  let info = taskbarGuard.getForegroundFullscreenInfo();
+
+  if (info.covers) {
+    lastFullscreenWindowHandle = info.hwnd;
+    obstructedRun = 0;
+  } else if (lastFullscreenWindowHandle) {
+    // 포커스는 다른 창으로 넘어갔지만, 직전 전체화면 창이 실제로는 안 가려진 채
+    // 남아있을 수 있다 — 그 창 하나만 좁게 재확인한다(2026-08-28, z-order 전역 순회의
+    // 회귀를 되돌리고 대신 도입).
+    const still = taskbarGuard.isStillCoveringUnobstructed(
+      lastFullscreenWindowHandle,
+      widgetWindow.getNativeWindowHandle()
+    );
+    if (still.covers) {
+      info = still;
+      obstructedRun = 0;
+    } else if (still.reason === 'obstructed') {
+      // Alt+Tab 전환 UI 등 짧게 스쳐가는 창 하나만으로 추적을 버리면, 다음 폴링엔 재확인할
+      // 대상 자체가 없어져 그대로 "가려짐 확정"이 돼 버린다(2026-08-28 실측 확인 — obstruction
+      // 1회가 그대로 위젯 재등장으로 이어졌다). 같은 창을 대상으로 연속 확인될 때만 확정한다.
+      obstructedRun += 1;
+      if (obstructedRun < FULLSCREEN_HIDE_EXIT_SAMPLES) {
+        info = { ...still, covers: true, reason: 'obstructed-pending' };
+      } else {
+        const or = still.obstructedRect;
+        const orStr = or ? `(${or.left},${or.top})-(${or.right},${or.bottom})` : 'na';
+        console.log(
+          `[claudeState] 전체화면 유지 재확인 실패: "${still.obstructedBy || '(알수없음)'}" 창에 가려짐 ` +
+          `obstructedRect=${orStr}`
+        );
+        lastFullscreenWindowHandle = null;
+        obstructedRun = 0;
+      }
+    } else {
+      // 창 자체가 사라짐·최소화·전체화면 geometry 이탈 — 노이즈가 아니라 실제 종료다.
+      lastFullscreenWindowHandle = null;
+      obstructedRun = 0;
+    }
+  }
+
   if (info.covers !== lastFullscreenGeometryActive) {
     const r = info.rect ? `(${info.rect.left},${info.rect.top})-(${info.rect.right},${info.rect.bottom})` : 'na';
     const mr = info.monitorRect

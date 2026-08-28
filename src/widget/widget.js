@@ -171,6 +171,7 @@ window.claudeState.onUsageUpdate(render);
 
 widget.addEventListener('contextmenu', (e) => {
   e.preventDefault();
+  cancelPanelShow();
   window.claudeState.hidePanel();
   window.claudeState.showWidgetContextMenu();
 });
@@ -187,12 +188,29 @@ let rafHandle = 0;
 // --- 상세 패널 ---
 // 네이티브 title 툴팁은 글꼴도 색도 못 바꾸므로 별도 창으로 띄운다.
 // 드래그 중에는 따라다니면 거슬리므로 숨긴다.
+// 위젯을 옮기려고 마우스를 잠깐 올리기만 해도 즉시 뜨면 거슬리므로(2026-08-28 사용자 지적),
+// 1초 이상 머물러야 뜨게 딜레이를 둔다. 드래그가 시작되거나 마우스가 빠지면 예약을 취소한다.
+const PANEL_SHOW_DELAY_MS = 500;
+let panelShowTimer = null;
+
+function cancelPanelShow() {
+  if (panelShowTimer) {
+    clearTimeout(panelShowTimer);
+    panelShowTimer = null;
+  }
+}
+
 widget.addEventListener('mouseenter', () => {
   if (dragging) return;
-  window.claudeState.showPanel();
+  cancelPanelShow();
+  panelShowTimer = setTimeout(() => {
+    panelShowTimer = null;
+    window.claudeState.showPanel();
+  }, PANEL_SHOW_DELAY_MS);
 });
 
 widget.addEventListener('mouseleave', () => {
+  cancelPanelShow();
   window.claudeState.hidePanel();
 });
 
@@ -206,6 +224,7 @@ function flushMove() {
 
 widget.addEventListener('pointerdown', async (e) => {
   if (e.button !== 0) return;
+  cancelPanelShow();
   window.claudeState.hidePanel();
   const origin = await window.claudeState.widgetDragStart();
   if (!origin) return;
