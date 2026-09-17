@@ -249,6 +249,12 @@ function evaluateWindowCoverage(hwnd) {
   if (FULLSCREEN_EXCLUDE_CLASSES.has(className)) {
     return { covers: false, className, rect, reason: 'excluded-class' };
   }
+  // 닫힌 시스템 UI(Windows.UI.Core.CoreWindow)는 모니터 전체 크기인 채 cloaked 로 남는다.
+  // 2026-09-17 실측: 17:30 에 전체화면으로 잡힌 뒤 닫혀도 계속 "덮음"으로 읽혀 위젯이
+  // 2시간 넘게 숨은 채였다. 안 그려지는 창은 화면을 덮을 수 없으니 여기서 거른다.
+  if (isCloaked(hwnd)) {
+    return { covers: false, className, rect, reason: 'cloaked' };
+  }
 
   const monitorRect = monitorRectFor(rect);
   if (!monitorRect) return { covers: false, className, rect, reason: 'no-monitor' };
@@ -287,7 +293,8 @@ function getForegroundFullscreenInfo() {
  */
 function isStillCoveringUnobstructed(hwnd, widgetHandleBuf) {
   loadNative();
-  if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd)) {
+  // IsWindowVisible 은 cloaked 를 못 본다 — 그래서 isCloaked 를 따로 건다(2026-09-17).
+  if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd) || isCloaked(hwnd)) {
     return { covers: false, reason: 'window-gone' };
   }
 

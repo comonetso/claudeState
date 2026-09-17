@@ -36,7 +36,7 @@
   "widget.panel.weekly": "주간 세션",
   "widget.panel.resetAt": "{0} 재설정",
   "widget.panel.noFiveHour": "5시간 한도가 없는 계정입니다",
-  "widget.codex.noFiveHour": "5시간 한도 없음",
+  "widget.codex.noFiveHour": "5시간 제한 미적용",
   "widget.panel.unavailable": "사용량을 가져오지 못했습니다",
   "widget.panel.unconfigured": "설정이 필요합니다.\n우클릭 → 설정에서 쿠키와 Organization ID를 입력하세요.",
   "widget.panel.authExpired": "쿠키가 만료되었습니다.\n우클릭 → 설정에서 Session Cookie를 다시 입력하세요.",

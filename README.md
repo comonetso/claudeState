@@ -49,7 +49,7 @@ With the Codex CLI (Claude on the left, Codex on the right — time left instead
 ```
 
 - `S` = 5-hour session window, `W` = 7-day weekly total
-- Codex plans without a 5-hour limit (e.g. Pro Lite) show **"No 5-hour limit"** in the Codex `S` cell.
+- Codex plans without a 5-hour limit (e.g. Pro Lite) show **"No 5h cap applied"** in the Codex `S` cell.
 
 ---
 

@@ -36,7 +36,7 @@
   "widget.panel.weekly": "Weekly",
   "widget.panel.resetAt": "resets {0}",
   "widget.panel.noFiveHour": "This account has no 5-hour limit",
-  "widget.codex.noFiveHour": "No 5-hour limit",
+  "widget.codex.noFiveHour": "No 5h cap applied",
   "widget.panel.unavailable": "Could not read usage",
   "widget.panel.unconfigured": "Setup needed.\nRight-click → Settings to enter your cookie and Organization ID.",
   "widget.panel.authExpired": "Cookie expired.\nRight-click → Settings to re-enter your Session Cookie.",
