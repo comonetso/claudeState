@@ -1,8 +1,10 @@
 # claudeState
 
-A tiny Windows widget that pins your Claude usage (session + weekly) to your screen.
+A tiny Windows widget that pins your Claude usage (5-hour session + weekly) and your Codex usage next to the taskbar.
 
 Right-click the widget to open settings or hide it. Sits above your normal windows, stays out of your taskbar.
+
+**[⬇ Download for Windows (x64)](https://github.com/comonetso/claudeState/releases/latest/download/claudeState-Setup-x64.exe)** · [Release notes](https://github.com/comonetso/claudeState/releases/latest)
 
 > Korean README: [README.ko.md](README.ko.md)
 
@@ -10,8 +12,10 @@ Right-click the widget to open settings or hide it. Sits above your normal windo
 
 ## Features
 
-- **Two bars, one glance** — 5-hour session + 7-day weekly utilization, with reset times
-- **Per-model breakdown** — Sonnet / Opus percentages in the tooltip (when available)
+- **Two rows, one glance** — 5-hour session + 7-day weekly utilization, with time until reset
+- **Codex usage** — if the [Codex CLI](https://github.com/openai/codex) is installed, a second column shows Codex 5-hour & weekly usage (no setup needed)
+- **Detail panel** — hover the widget for a panel with reset times, bars, and per-model (Sonnet / Opus) numbers
+- **Auto-hide in fullscreen** — hides while a fullscreen window (video, game) covers it, comes back when you leave
 - **Cookie-expired alert** — the widget pulses red when your session cookie is dead
 - **Tray + context menu** — show/hide widget, refresh, reset position, view log
 - **Auto-launch at Windows startup** — optional
@@ -19,12 +23,14 @@ Right-click the widget to open settings or hide it. Sits above your normal windo
 - **Adjustable opacity** — 30% – 100% slider
 - **Encrypted credentials** — cookie stored via OS credential store (Windows DPAPI via `safeStorage`)
 - **Multi-monitor aware** — remembers position across displays, including negative X
-- **Auto-update** — checks GitHub Releases on launch and hourly; notifies when an update is ready, applies on next restart
+- **Auto-update** — once an update is downloaded, a prompt and a ⬆ mark on the widget tell you; restarting installs it silently
 - **Telegram notifications** — get a message the moment your 5-hour session resets, so you can start fresh immediately
 
 ---
 
-## Screenshot / Widget layout
+## Widget layout
+
+Without the Codex CLI (with progress bars):
 
 ```
 ┌────────────────────────────────────────────────┐
@@ -33,8 +39,17 @@ Right-click the widget to open settings or hide it. Sits above your normal windo
 └────────────────────────────────────────────────┘
 ```
 
-- `S` = 5-hour session window
-- `W` = 7-day weekly total
+With the Codex CLI (Claude on the left, Codex on the right — time left instead of bars):
+
+```
+┌──────────────────────────────────────────────────┐
+│ S ✳  3% in 3h 26m     │ ⬡ 12% in 1h 5m         │
+│ W ✳ 70% in 1d 23h     │ ⬡ 40% in 6d 23h        │
+└──────────────────────────────────────────────────┘
+```
+
+- `S` = 5-hour session window, `W` = 7-day weekly total
+- Codex plans without a 5-hour limit (e.g. Pro Lite) show **"No 5-hour limit"** in the Codex `S` cell.
 
 ---
 
@@ -42,9 +57,9 @@ Right-click the widget to open settings or hide it. Sits above your normal windo
 
 ### Option A — Prebuilt installer (recommended)
 
-Download the latest `claudeState-<version>-x64-exe.exe` from [Releases](https://github.com/comonetso/claudeState/releases), run it, and follow the installer.
+Download **[claudeState-Setup-x64.exe](https://github.com/comonetso/claudeState/releases/latest/download/claudeState-Setup-x64.exe)** and run it. This link always gets the latest version.
 
-The installer is NSIS, per-user, with optional desktop + start-menu shortcuts.
+The installer is NSIS, lets you choose the install folder, with optional desktop + start-menu shortcuts. Windows x64 only.
 
 ### Option B — Run from source
 
@@ -69,6 +84,8 @@ npm run pack     # Unpacked build → dist/win-unpacked/
 On launch the widget says **"Setup needed"**. Right-click it → **Settings** and fill in the two fields below.
 
 > ⚠️ Treat your session cookie like a password. Do NOT paste it into chat, screenshots, or anywhere public.
+
+Codex needs no setup. If you are logged in to the Codex CLI (`codex login`), its authentication is used as-is.
 
 ### 1. Session Cookie (`sessionKey`)
 
@@ -105,7 +122,7 @@ Paste it into the **Organization ID** field in the settings window and hit **Sav
 
 ### 3. (Optional) Refresh interval, language, opacity, auto-launch
 
-- Refresh interval — 10 to 3600 seconds (default 300)
+- Refresh interval — 10 to 3600 seconds (default 300). Claude and Codex are queried on the same cycle, but Codex never more than once a minute.
 - Language — Korean (default) / English, switches live
 - Widget opacity — 30% to 100%
 - Launch at Windows startup — default ON
@@ -119,12 +136,14 @@ The cookie is encrypted via `safeStorage` (DPAPI on Windows) and stored in `%APP
 | Action | How |
 |---|---|
 | Move widget | Left-click drag |
+| Detail panel | Hover the widget for a moment |
 | Open context menu | Right-click widget |
 | Refresh now | Double-click widget, or tray → Refresh now |
 | Hide / show | Tray → "Show widget" checkbox, or widget right-click → Hide |
 | Reset position | Tray → "Reset position" |
 | View log | Tray → "View log" (live-tails the log file) |
 | Check for updates | Tray → "Check for updates" |
+| Install update | Click the green ⬆ on the widget, or tray → "Restart to install v…" |
 | Quit | Tray → Quit |
 
 ---
@@ -137,12 +156,16 @@ Your session cookie on claude.ai rotated. Log into claude.ai again, grab the new
 ### Widget doesn't appear
 - Check the tray icon (a small claudeState icon). Right-click → "Show widget".
 - Try tray → "Reset position" in case it drifted off-screen.
+- It hides automatically while a fullscreen window is up, and returns 1–2 seconds after you leave fullscreen.
+
+### No Codex column
+The Codex CLI is not installed or not on your `PATH`. Check that `where codex` prints a path in a terminal. If you just installed it, the column appears on the next refresh.
 
 ### Taskbar becomes unresponsive after launch
 Fixed in recent builds by dropping `alwaysOnTop` from `screen-saver` to `floating` and disabling the `CalculateNativeWinOcclusion` feature. If it still happens, please open an issue with your Windows build + display setup.
 
 ### Second instance
-A second launch just pops a toast ("Already running. Check the tray icon.") and focuses the existing widget. There is always exactly one process.
+A second launch just pops a toast ("Already running. Check the tray icon.") and shows the existing widget again. There is always exactly one process.
 
 ### Running from VSCode integrated terminal
 VSCode sets `ELECTRON_RUN_AS_NODE=1`, which breaks `electron .` directly. Always use `npm start` / `npm run dev` — `scripts/run.js` strips that env var before spawning Electron.
@@ -185,7 +208,7 @@ Your 5-hour window is fully available.
 Weekly usage: 33%
 ```
 
-No polling, no extra services — it detects the reset during the normal refresh cycle (every 3 minutes by default).
+No polling, no extra services — it detects the reset during the normal refresh cycle (every 5 minutes by default). Only Claude sessions trigger this alert.
 
 ---
 
@@ -194,33 +217,41 @@ No polling, no extra services — it detects the reset during the normal refresh
 Auto-update uses `electron-updater` reading from GitHub Releases.
 
 - **On launch** (10s after startup) and **every hour** the app fetches `latest.yml` from the latest GitHub Release.
-- If a newer version exists, it downloads in the background and shows a Windows toast.
-- The new version is installed on next app quit (automatically) or immediately via tray → **"Restart to install v…"**.
+- If a newer version exists, it downloads in the background.
+- When the download finishes, a **"Restart now / Later"** prompt appears. **Restart now** installs silently (no installer wizard) and relaunches the app.
+- **Later** means you won't be asked again for that version. Install it any time by clicking the green **⬆** at the widget's top-right (the detail panel shows a note too), via tray → **"Restart to install v…"**, or simply by quitting the app.
+- If the app is installed under `C:\Program Files`, Windows may show one UAC prompt.
 - Development runs (`npm start`) skip the update check — only packaged builds call the updater.
 
 ### Publishing a new release (maintainer workflow)
 
 1. Bump `version` in [package.json](package.json).
-2. Set a GitHub Personal Access Token with `repo` scope:
+2. Commit and push. `electron-builder` tags `v<version>` on the latest commit of the remote default branch, so releasing before you push leaves the tag pointing at the wrong code.
+3. Build and publish in one shot, passing your logged-in GitHub CLI auth to that command only:
    ```powershell
-   $env:GH_TOKEN = "ghp_yourToken"
+   $env:GH_TOKEN = (gh auth token); npm run release
    ```
-3. Build and publish in one shot:
-   ```powershell
-   npm run release
+   ```bash
+   GH_TOKEN="$(gh auth token)" npm run release
    ```
-4. `electron-builder` will build the NSIS installer, upload it to a new GitHub Release draft along with `latest.yml` and `*.blockmap`, and the app's updater will pick it up automatically on all users' next launch.
+4. `electron-builder` builds the NSIS installer (`claudeState-Setup-x64.exe`) and uploads it with `latest.yml` and `*.blockmap` to a GitHub Release that is **published immediately** (not a draft). Users' apps pick it up on their next launch or hourly check.
 
 To build a local installer **without publishing**, use `npm run dist` instead.
+
+Because the installer file name has no version in it, the download link above never needs to change.
 
 ---
 
 ## Architecture (short)
 
-- **Main** (`src/main.js`) — single file that orchestrates widget window, settings window, tray, IPC handlers, log tee, refresh loop.
+- **Main** (`src/main.js`) — orchestrates the widget, detail panel and settings windows, tray, IPC handlers, log tee, refresh loop.
 - **Preload** (`src/preload.js`) — `contextBridge` API exposed as `window.claudeState`.
-- **Renderers** — `src/widget/*` and `src/settings/*`. Context isolation on, node integration off.
-- **API** (`src/api.js`) — calls `https://claude.ai/api/organizations/{orgId}/usage` and normalizes the response into `{sessionPercent, weeklyPercent, sonnetPercent, opusPercent, …}`.
+- **Renderers** — `src/widget/*`, `src/panel/*` and `src/settings/*`. Context isolation on, node integration off.
+- **Claude API** (`src/api.js`) — calls `https://claude.ai/api/organizations/{orgId}/usage` and normalizes the response into `{sessionPercent, weeklyPercent, sonnetPercent, opusPercent, …}`.
+- **Codex** (`src/codex.js`) — starts the installed Codex CLI in `app-server` mode and asks for limits over JSON-RPC (`account/rateLimits/read`). A child process, not a network call.
+- **Taskbar / fullscreen** (`src/taskbarGuard.js`) — Win32 event hooks that bring the widget back when the taskbar covers it, and detect fullscreen windows to hide it.
+- **Updater** (`src/updater.js`) — `electron-updater` wrapper with the install prompt and state broadcast.
+- **Telegram** (`src/telegram.js`) — bot linking and message sending.
 - **Storage** (`src/storage.js`)
   - Credentials → `safeStorage.encryptString` → `creds.enc`
   - Non-sensitive state (position, interval, opacity, language, auto-launch) → `state.json`
@@ -229,14 +260,14 @@ To build a local installer **without publishing**, use `npm run dist` instead.
 ### Refresh cycle
 
 ```
-timer → refreshUsage() → storage.getCredentials()
-  → api.fetchUsage(cookie, orgId)
-  → normalizeUsage()
-  → broadcast('usage:update', {status, data})
-  → widget/settings renderers update
+timer → refreshUsage()
+  ├─ storage.getCredentials() → api.fetchUsage(cookie, orgId) → normalizeUsage()
+  └─ codex.fetchRateLimits()   (when the Codex CLI is detected)
+  → broadcast('usage:update', {status, data, codex})
+  → widget/panel/settings renderers update
 ```
 
-401/403 from the Claude API throws an `AUTH_EXPIRED` code, which main.js maps to `status: 'auth_expired'` so the widget can pulse red.
+401/403 from the Claude API throws an `AUTH_EXPIRED` code, which main.js maps to `status: 'auth_expired'` so the widget can pulse red. A failed Codex query never affects the Claude display.
 
 ---
 
@@ -255,19 +286,36 @@ The upstream field names are not intuitive. This app normalizes them:
 
 If Claude changes the response shape, `normalizeUsage()` in [src/api.js](src/api.js) is the one function to update.
 
+## Notes on the Codex response shape
+
+`account/rateLimits/read` returns limits in two slots, `primary` and `secondary`, but **which slot holds which window depends on the plan.**
+
+| Plan | `primary` | `secondary` |
+|---|---|---|
+| Plus | 300 min (5-hour window) | 10080 min (weekly window) |
+| Pro Lite | 10080 min (weekly window) | none |
+
+So windows are picked by length (`windowDurationMins`), not by slot — 300 min = 5-hour, 10080 min = weekly. Without a 300-minute window, only weekly is shown. `usedPercent` is the consumed share and `resetsAt` is epoch **seconds**. The function to update is `normalize()` in [src/codex.js](src/codex.js).
+
 ---
 
 ## Privacy
 
-- All network traffic goes only to `https://claude.ai/api/…`.
-- Your session cookie never leaves your machine except as the `Cookie` header on those requests.
-- Cookie is encrypted at rest via `safeStorage` (DPAPI on Windows). Falls back to plaintext JSON only if `safeStorage.isEncryptionAvailable()` returns false.
+The app itself talks only to:
+
+- `https://claude.ai/api/…` — Claude usage. Your session cookie never leaves your machine except as the `Cookie` header on those requests.
+- `https://api.telegram.org` — only if you turn on Telegram notifications.
+- GitHub Releases — update checks and downloads.
+
+Codex usage is not requested by the app directly; it asks the installed Codex CLI. The CLI handles Codex authentication with its own file (`~/.codex/auth.json`); the app never reads or stores Codex credentials.
+
+Cookie is encrypted at rest via `safeStorage` (DPAPI on Windows). Falls back to plaintext JSON only if `safeStorage.isEncryptionAvailable()` returns false.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE) if present.
+MIT — see [LICENSE](LICENSE).
 
 ---
 
