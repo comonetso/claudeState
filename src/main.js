@@ -964,7 +964,10 @@ app.whenReady().then(async () => {
   if (app.isPackaged) {
     updater.setup({
       t,
-      onStateChange: () => rebuildTrayMenu()
+      onStateChange: (state) => {
+        rebuildTrayMenu();
+        broadcast('update:state', state);
+      }
     });
     setTimeout(() => {
       updater.checkNow({ silent: true }).catch(() => {});
@@ -1116,6 +1119,13 @@ ipcMain.handle('widget:hide', () => {
 
 ipcMain.handle('widget:context-menu', () => {
   showWidgetContextMenu();
+});
+
+// 위젯 ⬆ 표시·패널 안내용. 창이 늦게 떠서 broadcast 를 놓쳐도 여기서 현재 상태를 받는다.
+ipcMain.handle('update:get', () => updater.getState());
+
+ipcMain.handle('update:install', () => {
+  if (updater.getState().status === 'downloaded') updater.quitAndInstall();
 });
 
 ipcMain.handle('panel:show', () => {

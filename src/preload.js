@@ -19,6 +19,13 @@ contextBridge.exposeInMainWorld('claudeState', {
   telegramLink: (token) => ipcRenderer.invoke('telegram:link', token),
   telegramTest: () => ipcRenderer.invoke('telegram:test'),
   telegramSetNotify: (enabled) => ipcRenderer.invoke('telegram:set-notify', enabled),
+  getUpdateState: () => ipcRenderer.invoke('update:get'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateState: (handler) => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('update:state', listener);
+    return () => ipcRenderer.removeListener('update:state', listener);
+  },
   onI18nChanged: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('i18n:changed', listener);

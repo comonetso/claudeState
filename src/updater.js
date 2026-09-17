@@ -1,6 +1,9 @@
-const { app, Notification } = require('electron');
+const { app, Notification, dialog } = require('electron');
 
 let autoUpdater = null;
+// "나중에"를 고르면 같은 버전은 다시 묻지 않는다. 1시간 주기 확인이 이미 받아 둔 파일로
+// update-downloaded 를 또 내보내므로 버전으로 막는다. 설치는 위젯 ⬆·트레이·앱 종료 시 된다.
+let promptedVersion = null;
 let log = null;
 let state = {
   status: 'idle',
@@ -75,13 +78,7 @@ function setup({ t, onStateChange }) {
     state = { ...state, status: 'downloaded', latestVersion: info?.version ?? null, progress: 100 };
     log.info(`[updater] downloaded: ${info?.version}`);
     emit();
-    try {
-      new Notification({
-        title: t('update.notifyTitle'),
-        body: t('update.downloadedBody', info?.version ?? ''),
-        silent: false
-      }).show();
-    } catch {}
+    promptInstall(t, info?.version ?? '');
   });
 
   autoUpdater.on('error', (err) => {
@@ -91,6 +88,27 @@ function setup({ t, onStateChange }) {
   });
 
   return autoUpdater;
+}
+
+// 토스트 알림은 놓치기 쉽고 눌러도 아무 일이 없어서, 다운로드가 끝나면 확인 창으로 묻는다.
+async function promptInstall(t, version) {
+  if (promptedVersion === version) return;
+  promptedVersion = version;
+  try {
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      title: t('update.notifyTitle'),
+      message: t('update.dialogMessage', version),
+      detail: t('update.dialogDetail'),
+      buttons: [t('update.restartNow'), t('update.later')],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true
+    });
+    if (response === 0) quitAndInstall();
+  } catch (err) {
+    if (log) log.error(`[updater] prompt failed: ${err?.message || err}`);
+  }
 }
 
 async function checkNow({ silent = false } = {}) {
@@ -107,7 +125,8 @@ async function checkNow({ silent = false } = {}) {
 function quitAndInstall() {
   if (!autoUpdater) return;
   try {
-    autoUpdater.quitAndInstall(false, true);
+    // 조용히 설치하고 곧바로 다시 실행한다(2026-09-17 결정). 마법사를 띄우면 "다음"을 눌러야 끝난다.
+    autoUpdater.quitAndInstall(true, true);
   } catch (err) {
     if (log) log.error(`[updater] quitAndInstall failed: ${err?.message || err}`);
   }

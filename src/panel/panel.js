@@ -166,6 +166,20 @@ window.claudeState.onI18nChanged((payload) => {
   F.setDict(payload.dict || {});
   document.documentElement.lang = payload.language;
   if (lastPayload) render(lastPayload);
+  renderUpdate();
 });
 
 window.claudeState.onUsageUpdate(render);
+
+let lastUpdateState = null;
+function renderUpdate(state) {
+  if (state !== undefined) lastUpdateState = state;
+  const s = lastUpdateState;
+  setMsg('update-msg', s?.status === 'downloaded'
+    ? F.t('widget.panel.updateReady', s.latestVersion ?? '')
+    : '');
+  reportSize();
+}
+
+window.claudeState.getUpdateState().then(renderUpdate).catch(() => {});
+window.claudeState.onUpdateState(renderUpdate);

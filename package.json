@@ -1,7 +1,7 @@
 {
   "name": "claude-state",
   "productName": "claudeState",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Claude usage taskbar widget (i18n, opacity, auto-update)",
   "main": "src/main.js",
   "scripts": {
@@ -60,7 +60,7 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "${productName}-${version}-${arch}-${ext}.${ext}"
+      "artifactName": "${productName}-Setup-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

@@ -93,24 +93,36 @@ function readWindow(raw) {
  *   secondary → 주간 창  (windowDurationMins 10080)
  *   usedPercent 는 "소진율"이다. ChatGPT 사용량 화면은 잔여를 보여주므로 서로 여집합이다.
  *
+ * 단, 위 자리 배치는 Plus 기준이다. Pro Lite(planType "prolite")는 primary 에 주간 창(10080)이
+ * 오고 secondary 는 null 이다(2026-09-17 실측). 그래서 자리가 아니라 창 길이로 고른다.
+ * 300분 창이 없으면 주간만 표시하고, 그 밖의 길이는 표시하지 않는다.
+ *
  * hasFiveHour 를 planType 으로 판정하지 않는 이유:
  * 지금은 Plus 에만 5시간 한도가 있고 Pro 는 주간 전용이지만 OpenAI 가 Pro 에도 도입을
  * 예고했다. 게다가 Pro 계정이 planType 에 정확히 어떤 문자열을 보내는지 Plus 계정에서는
  * 확인할 방법이 없다. "5시간 창이 실제로 오는가"를 묻으면 그날이 와도 코드가 저절로 따라간다.
  * 규칙이 바뀌면 이 한 줄만 고치면 된다.
  */
+const FIVE_HOUR_WINDOW_MINS = 300;
+const WEEKLY_WINDOW_MINS = 10080;
+
+function pickByLength(windows, minutes) {
+  return windows.find((w) => w && w.windowMinutes === minutes) || null;
+}
+
 function normalize(rl) {
   if (!rl || typeof rl !== 'object') return null;
-  const primary = readWindow(rl.primary);
-  const secondary = readWindow(rl.secondary);
-  if (!primary && !secondary) return null;
+  const windows = [readWindow(rl.primary), readWindow(rl.secondary)];
+  const fiveHour = pickByLength(windows, FIVE_HOUR_WINDOW_MINS);
+  const weekly = pickByLength(windows, WEEKLY_WINDOW_MINS);
+  if (!fiveHour && !weekly) return null;
 
   return {
-    hasFiveHour: !!primary,
-    sessionPercent: primary ? primary.percent : null,
-    sessionResetAt: primary ? primary.resetAt : null,
-    weeklyPercent: secondary ? secondary.percent : null,
-    weeklyResetAt: secondary ? secondary.resetAt : null,
+    hasFiveHour: !!fiveHour,
+    sessionPercent: fiveHour ? fiveHour.percent : null,
+    sessionResetAt: fiveHour ? fiveHour.resetAt : null,
+    weeklyPercent: weekly ? weekly.percent : null,
+    weeklyResetAt: weekly ? weekly.resetAt : null,
     planType: typeof rl.planType === 'string' ? rl.planType : null,
     hasCredits: !!(rl.credits && rl.credits.hasCredits),
     observedAt: new Date().toISOString()

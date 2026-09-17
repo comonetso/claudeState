@@ -71,6 +71,8 @@ function renderCodex(payload) {
   if (!cx) {
     // 감지는 됐는데 이번 조회가 실패한 상태. 열을 접었다 폈다 하면 위젯 폭이
     // 요동치므로 자리는 지키고 값만 비운다.
+    cxSessionText.hidden = false;
+    widget.classList.remove('cx-no-five-hour');
     setPct(cxSessionText, null);
     setPct(cxWeeklyText, null);
     cxSessionWhen.textContent = '--';
@@ -79,8 +81,17 @@ function renderCodex(payload) {
   }
 
   // 5시간 한도가 없는 계정(주간 전용)은 S행에 넣을 값 자체가 없다.
-  setPct(cxSessionText, cx.hasFiveHour ? cx.sessionPercent : null);
-  cxSessionWhen.textContent = cx.hasFiveHour ? whenText(cx.sessionResetAt) : '--';
+  // 조회 실패(--)와 구분되도록 퍼센트 칸은 비우고 시간 칸에 안내를 쓴다.
+  // 퍼센트 칸은 숨겨서 안내가 아이콘 바로 옆에서 시작하게 한다.
+  // W행 퍼센트는 이때만 왼쪽 정렬해 안내 문구와 시작점을 맞춘다(widget.css).
+  cxSessionText.hidden = !cx.hasFiveHour;
+  widget.classList.toggle('cx-no-five-hour', !cx.hasFiveHour);
+  if (cx.hasFiveHour) {
+    setPct(cxSessionText, cx.sessionPercent);
+    cxSessionWhen.textContent = whenText(cx.sessionResetAt);
+  } else {
+    cxSessionWhen.textContent = F.t('widget.codex.noFiveHour');
+  }
   setPct(cxWeeklyText, cx.weeklyPercent);
   cxWeeklyWhen.textContent = whenText(cx.weeklyResetAt);
 }
@@ -168,6 +179,29 @@ window.claudeState.onI18nChanged((payload) => {
 });
 
 window.claudeState.onUsageUpdate(render);
+
+// --- 업데이트 ⬆ 표시 ---
+// 다운로드가 끝난 뒤에만 보인다. 누르면 재시작하여 설치한다.
+const updateBadge = document.getElementById('update-badge');
+
+function renderUpdate(state) {
+  updateBadge.hidden = state?.status !== 'downloaded';
+}
+
+window.claudeState.getUpdateState().then(renderUpdate).catch(() => {});
+window.claudeState.onUpdateState(renderUpdate);
+
+// 위젯 전체가 누르는 순간 드래그를 시작하므로, 여기서 먼저 끊어야 클릭으로 받는다.
+updateBadge.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+});
+updateBadge.addEventListener('click', (e) => {
+  e.stopPropagation();
+  window.claudeState.installUpdate();
+});
+updateBadge.addEventListener('dblclick', (e) => {
+  e.stopPropagation();
+});
 
 widget.addEventListener('contextmenu', (e) => {
   e.preventDefault();

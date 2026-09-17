@@ -42,7 +42,11 @@
         <span id="cx-weekly-when" class="when">--</span>
       </div>
     </div>
-    <div id="status" class="status"></div>
+    <!-- 우상단 표시 묶음. 오류 표시와 업데이트 ⬆ 가 함께 떠도 겹치지 않게 한 줄로 둔다. -->
+    <div class="corner">
+      <div id="status" class="status"></div>
+      <span id="update-badge" class="update-badge" hidden>⬆</span>
+    </div>
   </div>
   <script src="../shared/format.js"></script>
   <script src="widget.js"></script>
